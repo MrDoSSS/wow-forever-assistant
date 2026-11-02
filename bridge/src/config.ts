@@ -16,8 +16,27 @@ export const BridgeConfig = z.strictObject({
   codexPath: z.string().min(1).nullable(),
   /** Codex model; null selects the subscription's default model. */
   codexModel: z.string().min(1).nullable(),
-  /** fixed returns a test reply without AI; codex uses Codex and the forever tools. */
-  modelAdapter: z.enum(['fixed', 'codex']),
+  /** Claude Code CLI path; null selects ~\.local\bin\claude.exe or claude.exe on PATH. */
+  claudePath: z.string().min(1).nullable(),
+  /** Claude model alias or full name; null selects the CLI's default model. */
+  claudeModel: z.string().min(1).nullable(),
+  /** Claude effort level; null keeps the CLI's default. */
+  claudeEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).nullable(),
+  /** Anthropic API key for the CLI; null uses its login or the ANTHROPIC_API_KEY environment variable. */
+  claudeApiKey: z.string().min(1).nullable(),
+  /** OpenRouter model ID, for example google/gemini-3.8-flash. */
+  openrouterModel: z.string().min(1),
+  /** OpenRouter API key; null reads the OPENROUTER_API_KEY environment variable. */
+  openrouterApiKey: z.string().min(1).nullable(),
+  /** Reasoning effort for models that support it; null keeps the model's default. */
+  openrouterReasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).nullable(),
+  /** Model-invoked OpenRouter web search, billed per search in addition to tokens. */
+  openrouterWebSearch: z.boolean(),
+  /**
+   * fixed returns a test reply without AI; codex uses Codex and the forever tools;
+   * claude uses the Claude Code CLI and openrouter calls an OpenRouter model with the same tools.
+   */
+  modelAdapter: z.enum(['fixed', 'codex', 'claude', 'openrouter']),
   fixedReplyDelayMs: z.int().min(0).max(3_600_000),
   /** Include question text and game data in logs. */
   logContent: z.boolean(),
@@ -32,6 +51,14 @@ export const DEFAULT_CONFIG: BridgeConfig = {
   gameProcessName: 'Wow,WowB',
   codexPath: null,
   codexModel: null,
+  claudePath: null,
+  claudeModel: null,
+  claudeEffort: null,
+  claudeApiKey: null,
+  openrouterModel: 'google/gemini-3.8-flash',
+  openrouterApiKey: null,
+  openrouterReasoningEffort: null,
+  openrouterWebSearch: true,
   modelAdapter: 'codex',
   fixedReplyDelayMs: 0,
   logContent: false,
@@ -45,6 +72,8 @@ export interface DataPaths {
   backups: string;
   logs: string;
   run: string;
+  /** Chat transcripts of adapters without their own session storage. */
+  sessions: string;
 }
 
 export function defaultDataDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -62,6 +91,7 @@ export function dataPaths(dataDir: string): DataPaths {
     backups: join(dataDir, 'backups'),
     logs: join(dataDir, 'logs'),
     run: join(dataDir, 'run'),
+    sessions: join(dataDir, 'sessions'),
   };
 }
 

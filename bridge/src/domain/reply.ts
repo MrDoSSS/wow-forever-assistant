@@ -46,6 +46,28 @@ export function checkTextMarkers(text: string, itemRefIds: readonly string[], lo
   return null;
 }
 
+/**
+ * Plan step text may link only the step's own item and place. The plan window renders [[item]]
+ * and [[map]] as those links; storing them without IDs keeps a revised step's text equal to
+ * the original even though every question issues new itemRefIds.
+ */
+export function stepTextMarkers(text: string, itemRefId: string | null, location: number | null): { text: string } | { reason: string } {
+  let reason: string | null = null;
+  const normalized = text.replace(MARKER, (whole, body: string) => {
+    if (body === 'item' || (itemRefId !== null && body === `item:${itemRefId}`)) {
+      if (itemRefId === null) reason ??= 'text marker [[item]] needs the step\'s itemRefId';
+      return '[[item]]';
+    }
+    if (body === 'map' || (location !== null && body === `map:${location}`)) {
+      if (location === null) reason ??= 'text marker [[map]] needs the step\'s location';
+      return '[[map]]';
+    }
+    reason ??= `text marker [[${body.slice(0, 40)}]] is not the step's own item or place: use [[item:<the step's itemRefId>]] and [[map:<the step's location>]]`;
+    return whole;
+  });
+  return reason === null ? { text: normalized } : { reason };
+}
+
 export function describeIssues(error: z.ZodError): string {
   return error.issues
     .slice(0, 5)
@@ -133,6 +155,8 @@ export function verifyModelReply(output: unknown, store: Store, attemptIds: read
     const steps: GamePlanStep[] = [];
     for (const [index, step] of reply.plan.steps.entries()) {
       const at = `plan step ${index + 1}`;
+      const marked = stepTextMarkers(step.text, step.itemRefId, step.location);
+      if ('reason' in marked) return { ok: false, reason: `${at}: ${marked.reason}` };
       let item: VerifiedItem | null = null;
       if (step.itemRefId !== null) {
         const row = ownRef(step.itemRefId, 'item');
@@ -164,7 +188,7 @@ export function verifyModelReply(output: unknown, store: Store, attemptIds: read
       }
       steps.push({
         kind: step.kind,
-        text: step.text,
+        text: marked.text,
         character: step.character,
         item,
         quantity: step.quantity,

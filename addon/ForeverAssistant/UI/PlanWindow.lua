@@ -214,9 +214,25 @@ local function money(copper)
   return string.format("%dg %ds %dc", gold, silver, copper % 100)
 end
 
-local KIND = { get = "Get", craft = "Craft", learn = "Learn", mail = "Mail", collect = "Collect", login = "Log in", ["goto"] = "Go", ["do"] = "Do" }
+local function mentions(text, name)
+  return type(name) == "string" and name ~= "" and string.find(string.lower(text), string.lower(name), 1, true) ~= nil
+end
 
--- Step row: checkbox, character, action, item quantity, point and recipient.
+-- Gray progress, as in leveling guides: items in the bags, items mailed or the skill rank.
+local function stepProgress(plan, index, step, itemId, quantity)
+  if plan.done[index] or not Plan.isMine(step) then return nil end
+  if type(step.skillId) == "number" and type(step.skillRank) == "number" then
+    local rank = Plan.skillRank(step.skillId)
+    return rank and string.format("%d/%d", rank, step.skillRank)
+  end
+  if not (itemId and quantity) then return nil end
+  if step.kind == "mail" then return string.format("%d/%d", (plan.sent and plan.sent[index]) or 0, quantity) end
+  return string.format("%d/%d", tonumber((Core.try(GetItemCount, itemId, true))) or 0, quantity)
+end
+
+-- Step row: checkbox, character, the step text with its [[item]] and [[map]] markers
+-- as links, then progress. Steps without markers (older plans) get their item and point
+-- after the text; mail and collect name the other character unless the text does.
 function UI.planStepText(plan, index)
   local step = plan.steps[index]
   local done = plan.done[index]
@@ -225,39 +241,36 @@ function UI.planStepText(plan, index)
   if type(step.character) == "string" and step.character ~= "" then
     parts[#parts + 1] = (Plan.isMine(step) and "|cffffd27f" or "|cff8a8a8a") .. step.character .. ":|r"
   end
-  parts[#parts + 1] = (done and "|cff8a8a8a" or "|cffe8e0cf") .. tostring(step.text) .. "|r"
-  local details = {}
-  local itemId = Plan.itemId(step)
-  if itemId then
-    local link = FA.Items.linkFor(step.item)
-    local quantity = tonumber(step.quantity)
-    local text = quantity and (quantity .. " x " .. link) or link
-    if quantity and Plan.isMine(step) and step.kind ~= "mail" and not done then
-      local have = tonumber((Core.try(GetItemCount, itemId, true))) or 0
-      text = text .. string.format(" |cff8a8a8a(have %d)|r", have)
-    end
-    details[#details + 1] = text
+  local color = done and "|cff8a8a8a" or "|cffe8e0cf"
+  local itemId, quantity = Plan.itemId(step), tonumber(step.quantity)
+  local itemLink = itemId and FA.Items.linkFor(step.item)
+  local point = tonumber(step.location) and FA.Map.pointOf(plan, step.location)
+  local mapLink = point and FA.Items.mapLink("plan", point, step.location)
+  local linked = {}
+  -- Links end with |r: resume the step color after each one. [[item:...]] and
+  -- [[map:N]] from plans saved before the bridge normalized markers mean the same.
+  local text = string.gsub(tostring(step.text), "%[%[(%a+)[^%]]*%]%]", function(kind)
+    local link = (kind == "item" and itemLink) or (kind == "map" and mapLink) or nil
+    if not link then return "" end
+    linked[kind] = true
+    return link .. color
+  end)
+  parts[#parts + 1] = color .. text .. "|r"
+  local extra = {}
+  if itemLink and not linked.item then extra[#extra + 1] = quantity and (quantity .. " x " .. itemLink) or itemLink end
+  if step.kind == "collect" and type(step.mailFrom) == "string" and not mentions(text, step.mailFrom) then
+    extra[#extra + 1] = "from |cffffd27f" .. step.mailFrom .. "|r"
   end
-  if type(step.skillId) == "number" and type(step.skillRank) == "number" then
-    local rank = Plan.isMine(step) and not done and Plan.skillRank(step.skillId)
-    details[#details + 1] = rank and string.format("skill %d / %d", rank, step.skillRank) or ("skill " .. step.skillRank)
-  end
-  if step.kind == "collect" and type(step.mailFrom) == "string" then
-    details[#details + 1] = "from |cffffd27f" .. step.mailFrom .. "|r"
-  end
-  if step.kind == "mail" then
-    local sent = plan.sent and plan.sent[index]
+  if step.kind == "mail" and not mentions(text, step.mailTo) then
     local target = "to |cffffd27f" .. tostring(step.mailTo) .. "|r"
     if tonumber(step.moneyCopper) then target = target .. " " .. money(step.moneyCopper) end
-    if sent and sent > 0 and not done then target = target .. string.format(" |cff8a8a8a(sent %d)|r", sent) end
-    details[#details + 1] = target
+    extra[#extra + 1] = target
   end
-  if tonumber(step.location) then
-    local point = FA.Map.pointOf(plan, step.location)
-    if point then details[#details + 1] = FA.Items.mapLink("plan", point, step.location) end
-  end
+  if mapLink and not linked.map then extra[#extra + 1] = mapLink end
   local line = table.concat(parts, " ")
-  if #details > 0 then line = line .. "  |cffaaaaaa" .. (KIND[step.kind] or "") .. ":|r " .. table.concat(details, ", ") end
+  if #extra > 0 then line = line .. "  " .. table.concat(extra, ", ") end
+  local progress = stepProgress(plan, index, step, itemId, quantity)
+  if progress then line = line .. "  |cff8a8a8a" .. progress .. "|r" end
   return line
 end
 

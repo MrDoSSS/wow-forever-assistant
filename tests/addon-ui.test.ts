@@ -258,6 +258,38 @@ describe('active plan', () => {
       assert(settings.offset == 0)`);
   });
 
+  it('shows a step with its own item and place as links in the text and only progress after it', () => {
+    const lua = addon(true);
+    lua.run('TEST_REQUEST = assert(__FA_NS.Assistant.ask("Potion plan"))');
+    const potion = '{ refId = "r1", itemId = 118, evidenceIds = { "e" } }';
+    applyDelivery(lua, 1, `{ deliveryId = "marked", type = "reply", request = TEST_REQUEST, body = {
+      text = "Plan", status = "answer",
+      locations = { { approxLocation = { title = "Vendor", zoneName = "Elwynn Forest", x = 40, y = 60, basis = "b", sourceUrl = "u" } } },
+      plan = { title = "Potions", steps = {
+        { kind = "get", text = "Buy 5 [[item]] at [[map]]", character = "Tester", item = ${potion}, quantity = 5, location = 1 },
+        { kind = "mail", text = "Send 2 [[item]] to Banker", character = "Tester", item = ${potion}, quantity = 2, mailTo = "Banker" },
+        { kind = "get", text = "Buy [[item:0123456789abcdef0123456789abcdef]] at [[map:1]]", character = "Tester", item = ${potion}, quantity = 9, location = 1 },
+        { kind = "get", text = "Buy potions", character = "Tester", item = ${potion}, quantity = 4 },
+      } } } }`);
+    lua.run(`local Plan, UI = __FA_NS.Plan, __FA_NS.UI
+      assert(Plan.activate(__FA_NS.Assistant.state.history[2]))
+      local plan = Plan.active()
+      local function count(text, part) local n = 0; for _ in string.gmatch(text, part) do n = n + 1 end; return n end
+      local buy = UI.planStepText(plan, 1)
+      assert(string.find(buy, "Buy 5 |cffffffff|Hitem:118", 1, true), buy)
+      assert(string.find(buy, "|h|r|cffe8e0cf at |cffff9933|Hfamap:plan:1|h[Vendor", 1, true), buy)
+      assert(count(buy, "Hitem:118") == 1 and count(buy, "Hfamap") == 1, "the item and the place appear once")
+      assert(not string.find(buy, "Get:", 1, true) and not string.find(buy, "5 x ", 1, true), buy)
+      assert(string.find(buy, "|cff8a8a8a2/5|r$"), "two potions of five are in the bags: " .. buy)
+      local mail = UI.planStepText(plan, 2)
+      assert(not string.find(mail, "to |cffffd27fBanker", 1, true), "the text already names the recipient")
+      assert(string.find(mail, "|cff8a8a8a0/2|r$"), mail)
+      local saved = UI.planStepText(plan, 3)
+      assert(not string.find(saved, "[[", 1, true) and count(saved, "Hitem:118") == 1 and count(saved, "Hfamap") == 1, saved)
+      local legacy = UI.planStepText(plan, 4)
+      assert(string.find(legacy, "Buy potions|r  4 x |cffffffff|Hitem:118", 1, true), legacy)`);
+  });
+
   it('ticks logging in, emptied letters, a reached skill and a reached place by itself', () => {
     const lua = addon(true);
     lua.run('TEST_REQUEST = assert(__FA_NS.Assistant.ask("Level tailoring"))');
@@ -279,7 +311,7 @@ describe('active plan', () => {
       assert(plan.done[1] and not plan.done[2], "only the current character is logged in")
       assert(plan.done[4], "tailoring 75 reaches skill 50 without 33 bolts in the bags")
       assert(not plan.done[5])
-      assert(string.find(UI.planStepText(plan, 5), "skill 75 / 100", 1, true), UI.planStepText(plan, 5))
+      assert(string.find(UI.planStepText(plan, 5), "Belts up to 100|r  |cff8a8a8a75/100|r", 1, true), UI.planStepText(plan, 5))
       assert(plan.done[6], "the player stands at the point")
       local letters = { { "Banker", 40000, 0 } }
       function GetInboxNumItems() return #letters end

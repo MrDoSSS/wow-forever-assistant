@@ -283,7 +283,7 @@ describe('alts in the prompt', () => {
     for (const session of [null, 'thread-1']) {
       const prompt = buildPrompt(attempt(session), brief);
       assert.ok(prompt.includes('</characters>') && prompt.includes('"moneyCopper":10000000'), String(session));
-      assert.ok(prompt.includes('find_recipe_crafters') && prompt.includes('move freely between own characters by mail'), String(session));
+      assert.ok(prompt.includes('find_recipe_crafters') && prompt.includes('Gold and items move freely by mail'), String(session));
     }
     assert.ok(buildPrompt(attempt('thread-1'), []).includes('No other characters of the player are saved yet.'));
     assert.ok(!buildPrompt(attempt(null), null).includes('</characters>'));
@@ -293,11 +293,20 @@ describe('alts in the prompt', () => {
     const plan = { title: 'Wands', steps: [{ n: 1, kind: 'get', text: 'Buy wood', character: 'Tester', itemId: 4470, quantity: 3, mailTo: null, mailFrom: null, moneyCopper: null, skillRank: null, done: true }] };
     for (const session of [null, 'thread-1']) {
       const prompt = buildPrompt(attempt(session), null, plan);
-      assert.ok(prompt.includes('Plans (this replaces any earlier rule about plans)'), String(session));
+      assert.ok(prompt.includes('Plans:\n- When the answer is a sequence of actions'), String(session));
       assert.ok(prompt.includes('</active_plan>') && prompt.includes('"done":true'), String(session));
     }
     assert.ok(!buildPrompt(attempt(null)).includes('</active_plan>'));
     assert.ok(buildPrompt(attempt(null), null, { unavailable: true }).includes('its answer was deleted'));
+  });
+
+  it('corrects a resumed session without repeating the rules it just received', () => {
+    const correction = (codexSessionId: string | null) => buildPrompt({ ...attempt(codexSessionId), ordinal: 2, correction: { reason: 'schema: text' } }, brief);
+    const resumed = correction('thread-1');
+    assert.match(resumed, /^The bridge rejected your previous final message for this question: schema: text/);
+    assert.ok(!resumed.includes('Plans:') && !resumed.includes('<snapshot>'));
+    const fresh = correction(null);
+    assert.ok(fresh.includes('Sources, in order of trust') && fresh.includes('Plans:') && fresh.includes('<snapshot>'));
   });
 
   it('lists only the other characters in the brief', () => {

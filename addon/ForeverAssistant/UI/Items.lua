@@ -37,10 +37,12 @@ function Items.linkFor(ref)
 end
 
 -- Map link: green if verified, orange if unverified;
--- adjacent [Track] activates the client's waypoint.
+-- adjacent [Track] activates the client's waypoint. The link names the NPC or place
+-- (the zone without a title); zone and coordinates are in its tooltip. A point outside
+-- the player's map is plain text with coordinates, the only way to find it.
 function Items.mapLink(entryId, point, pointIndex)
-  local label = FA.Map.label(point)
-  if not point.mapId then return label .. " (zone not found on your map)" end
+  if not point.mapId then return FA.Map.label(point) .. " (zone not found on your map)" end
+  local label = point.title or point.zoneName
   local target = entryId .. (pointIndex and (":" .. pointIndex) or "")
   local track = " |cff40c0ff|H" .. TRACK_LINK .. target .. "|h[Track]|h|r"
   if point.verified then return "|cff66ff66|H" .. MAP_LINK .. target .. "|h[" .. label .. "]|h|r" .. track end

@@ -2,9 +2,11 @@
 // message reception, fixed test replies and LoD pool publication.
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ModelAdapter } from './ai/adapter.js';
+import type { AttemptInput, ModelAdapter } from './ai/adapter.js';
+import { ClaudeAdapter, resolveClaudePath } from './ai/claude.js';
 import { CodexAdapter, resolveCodexPath } from './ai/codex.js';
 import { FixedModelAdapter } from './ai/fixed.js';
+import { OpenRouterAdapter } from './ai/openrouter.js';
 import { checkHosted, stopConfirmed } from './ai/process-host.js';
 import { ToolChannelHub } from './app/tool-channel.js';
 import { AltsSource } from './sources/alts.js';
@@ -24,7 +26,7 @@ import { FrameReceiver } from './transport/receiver.js';
 
 async function main(): Promise<number> {
   const paths = dataPaths(defaultDataDir());
-  for (const dir of [paths.dataDir, paths.cache, paths.backups, paths.logs, paths.run]) mkdirSync(dir, { recursive: true });
+  for (const dir of [paths.dataDir, paths.cache, paths.backups, paths.logs, paths.run, paths.sessions]) mkdirSync(dir, { recursive: true });
   const config = loadConfig(paths.config);
   const diag = new JsonlDiagnostics({ dir: paths.logs, clock: systemClock, echo: true, includeContent: config.logContent });
 
@@ -73,8 +75,50 @@ async function main(): Promise<number> {
     alts,
     onCommitted: () => publisher?.schedule(),
   });
+  const account = (input: AttemptInput) => (alts.configured ? accountBrief(accountView(alts.load().records, input.query, input.request.characterKey)) : null);
+  const activePlan = (input: AttemptInput) => activePlanBrief(store, input.query.activePlan);
+  const schemaPath = resourcePath('schemas', 'model-reply.schema.json');
   let adapter: ModelAdapter;
-  if (config.modelAdapter === 'codex') {
+  if (config.modelAdapter === 'openrouter') {
+    const apiKey = config.openrouterApiKey ?? process.env.OPENROUTER_API_KEY ?? null;
+    if (!apiKey) {
+      console.error('OpenRouter API key was not found: set openrouterApiKey in config.json or the OPENROUTER_API_KEY environment variable.');
+      store.close();
+      return 1;
+    }
+    adapter = new OpenRouterAdapter({
+      apiKey,
+      model: config.openrouterModel,
+      reasoningEffort: config.openrouterReasoningEffort,
+      webSearch: config.openrouterWebSearch,
+      schemaPath,
+      sessionsDir: paths.sessions,
+      channels,
+      diag,
+      account,
+      activePlan,
+    });
+  } else if (config.modelAdapter === 'claude') {
+    const claudePath = resolveClaudePath(config.claudePath);
+    if (!claudePath) {
+      console.error('Claude Code CLI was not found: set claudePath in config.json.');
+      store.close();
+      return 1;
+    }
+    adapter = new ClaudeAdapter({
+      command: { exe: claudePath, prefixArgs: [] },
+      runDir: paths.run,
+      schemaPath,
+      mcp: { exe: process.execPath, script: fileURLToPath(new URL('./sources/mcp.ts', import.meta.url)) },
+      channels,
+      diag,
+      model: config.claudeModel,
+      effort: config.claudeEffort,
+      apiKey: config.claudeApiKey,
+      account,
+      activePlan,
+    });
+  } else if (config.modelAdapter === 'codex') {
     const codexPath = resolveCodexPath(config.codexPath);
     if (!codexPath) {
       console.error('Codex CLI was not found: set codexPath in config.json.');
@@ -84,13 +128,13 @@ async function main(): Promise<number> {
     const codex = new CodexAdapter({
       command: { exe: codexPath, prefixArgs: [] },
       runDir: paths.run,
-      schemaPath: resourcePath('schemas', 'model-reply.schema.json'),
+      schemaPath,
       mcp: { exe: process.execPath, script: fileURLToPath(new URL('./sources/mcp.ts', import.meta.url)) },
       channels,
       diag,
       model: config.codexModel,
-      account: (input) => (alts.configured ? accountBrief(accountView(alts.load().records, input.query, input.request.characterKey)) : null),
-      activePlan: (input) => activePlanBrief(store, input.query.activePlan),
+      account,
+      activePlan,
     });
     const profile = await codex.prepare();
     if (profile.missingHard.length > 0) {

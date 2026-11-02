@@ -379,6 +379,14 @@ describe('tool channel', { skip: !windows }, () => {
     assert.match(reason([{ ...step, kind: 'login', character: null }]), /login needs character/);
     assert.match(reason([{ ...step, kind: 'collect', itemRefId: null, character: 'Banker' }]), /collect needs mailFrom/);
     assert.match(reason([{ ...step, kind: 'craft', skillRank: 32, profession: 'Sewing' }]), /skillRank needs profession, one of Alchemy/);
+    // Step text links only its own item and place; IDs are dropped so revised steps keep their text.
+    const marked = verifyModelReply(reply([{ ...step, text: `Buy 3 [[item:${itemRefId}]] at [[map:1]]`, location: 1 }],
+      [{ locationRefId: null, approxLocation: { title: 'Vendor', zoneName: 'Elwynn Forest', x: 40, y: 60, basis: 'b', sourceUrl: 'https://example.com' } }]), env.store, [input.attemptId]);
+    assert.ok(marked.ok, marked.ok ? '' : marked.reason);
+    assert.equal(marked.ok && marked.reply.plan!.steps[0]!.text, 'Buy 3 [[item]] at [[map]]');
+    assert.match(reason([step, { ...step, text: `Buy [[item:${randomId()}]]` }]), /plan step 2: text marker \[\[item:[0-9a-f]+\]\] is not the step's own item or place/);
+    assert.match(reason([{ ...step, text: 'Go to [[map:1]]' }]), /plan step 1: text marker \[\[map:1\]\] is not the step's own/);
+    assert.match(reason([{ ...step, itemRefId: null, quantity: null, text: 'Buy [[item]]' }]), /needs the step's itemRefId/);
     const levelling = verifyModelReply(reply([
       { ...step, kind: 'collect', itemRefId: null, character: 'Banker', mailFrom: 'Tester' },
       { ...step, kind: 'craft', skillRank: 32, profession: 'tailoring' },

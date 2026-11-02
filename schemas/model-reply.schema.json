@@ -13,11 +13,13 @@
       ]
     },
     "text": {
+      "description": "Answer shown in the in-game chat, in the language of the question. Write every item from itemRefIds as [[item:<itemRefId>]] in place of its name and every place as [[map:<index>]] into locations: the addon shows them as named links, so never repeat the name next to a marker.",
       "type": "string",
       "minLength": 1,
       "maxLength": 65536
     },
     "itemRefIds": {
+      "description": "itemRefIds from get_game_record (type \"item\") or lookup_items for this question. Get one for every item the answer names, and write each in text as its [[item:<itemRefId>]] marker.",
       "maxItems": 100,
       "type": "array",
       "items": {
@@ -231,6 +233,7 @@
                     ]
                   },
                   "text": {
+                    "description": "Short instruction in the language of the question. Write this step's own item as [[item:<its itemRefId>]] and its own place as [[map:<its location>]] instead of their names; no other markers. The plan window shows them as links and adds progress such as 0/1, so add no labels or owned counts.",
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 512

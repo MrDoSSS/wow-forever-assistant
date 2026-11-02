@@ -3,13 +3,16 @@
 // closes the connection without effects. One tool at a time; a repeated callId
 // returns its saved result. Register evidence and refIds and
 // link them to the attempt before returning the result. Closing an attempt revokes
-// its pipe, token and pending lookups.
+// its pipe, token and pending lookups. Adapters in the bridge process attach an attempt
+// without a pipe and call tools directly with the same validation and budgets.
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type Server, type Socket } from 'node:net';
+import { z } from 'zod';
 import {
   ClientItemInfo,
   IpcRequest,
   ItemInput,
+  ToolArgs,
   type Calculation,
   type PriceObservation,
   type QueryBody,
@@ -90,8 +93,9 @@ interface Channel {
   /** Immutable snapshot for this attempt, even when an update activates another version. */
   questie: QuestieSource | null;
   ctx: AttemptContext;
-  token: Buffer;
-  server: Server;
+  /** Pipe server and its token; null for an attempt attached in process. */
+  token: Buffer | null;
+  server: Server | null;
   sockets: Set<Socket>;
   cursors: Map<string, { key: string; offset: number }>;
   abort: AbortController;
@@ -149,23 +153,33 @@ export class ToolChannelHub {
   async open(ctx: AttemptContext): Promise<{ pipeName: string; token: string }> {
     const pipeName = pipeNameFor(ctx.attemptId);
     const token = randomBytes(32);
-    const channel: Channel = {
-      questie: this.deps.questiedb?.source ?? null,
-      ctx,
-      token,
-      server: createServer(),
-      sockets: new Set(),
-      cursors: new Map(),
-      abort: new AbortController(),
-      chain: Promise.resolve(),
-    };
-    channel.server.on('connection', (socket) => this.serve(channel, socket));
+    const server = createServer();
+    const channel = this.channel(ctx, token, server);
+    server.on('connection', (socket) => this.serve(channel, socket));
     await new Promise<void>((resolve, reject) => {
-      channel.server.once('error', reject);
-      channel.server.listen(pipeName, () => resolve());
+      server.once('error', reject);
+      server.listen(pipeName, () => resolve());
     });
     this.channels.set(ctx.attemptId, channel);
     return { pipeName, token: token.toString('hex') };
+  }
+
+  /** Attempt for an adapter in the bridge process: no pipe or token, tools go through call. */
+  attach(ctx: AttemptContext): void {
+    this.channels.set(ctx.attemptId, this.channel(ctx, null, null));
+  }
+
+  /** Direct tool call of an attached attempt; arguments are validated as in pipe requests. */
+  async call(attemptId: string, tool: ToolName, args: unknown): Promise<IpcResultBody> {
+    const callId = randomId();
+    const channel = this.channels.get(attemptId);
+    if (!channel) return this.result(callId, { status: 'cancelled', limitations: [] });
+    const parsed = ToolArgs[tool].safeParse(args);
+    if (!parsed.success) return this.result(callId, { status: 'error', limitations: [`invalid_arguments: ${z.prettifyError(parsed.error).slice(0, 1000)}`] });
+    // One tool at a time per attempt, as for pipe requests.
+    const run = channel.chain.then(() => this.handle(channel, callId, tool, parsed.data));
+    channel.chain = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   async close(attemptId: string): Promise<void> {
@@ -174,7 +188,21 @@ export class ToolChannelHub {
     this.channels.delete(attemptId);
     channel.abort.abort();
     for (const socket of channel.sockets) socket.destroy();
-    await new Promise<void>((resolve) => channel.server.close(() => resolve()));
+    const server = channel.server;
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+
+  private channel(ctx: AttemptContext, token: Buffer | null, server: Server | null): Channel {
+    return {
+      questie: this.deps.questiedb?.source ?? null,
+      ctx,
+      token,
+      server,
+      sockets: new Set(),
+      cursors: new Map(),
+      abort: new AbortController(),
+      chain: Promise.resolve(),
+    };
   }
 
   /** PRICE_RESULT was accepted and saved: continue the pending lookup_prices / lookup_items call. */
@@ -197,7 +225,8 @@ export class ToolChannelHub {
         const parsed = IpcRequest.safeParse(event.value);
         const value = parsed.success ? (parsed.data as { token: string; attemptId: string; callId: string; tool: ToolName; args: unknown }) : null;
         const token = value ? Buffer.from(value.token, 'hex') : null;
-        if (!value || !token || token.length !== channel.token.length || !timingSafeEqual(token, channel.token) || value.attemptId !== channel.ctx.attemptId) {
+        const expected = channel.token;
+        if (!value || !token || !expected || token.length !== expected.length || !timingSafeEqual(token, expected) || value.attemptId !== channel.ctx.attemptId) {
           this.deps.diag.warn('tool.ipc_rejected', { attemptId: channel.ctx.attemptId, reason: parsed.success ? 'token_or_attempt' : 'schema' });
           socket.destroy();
           return;

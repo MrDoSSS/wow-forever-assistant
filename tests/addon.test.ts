@@ -439,7 +439,13 @@ describe('addon polling schedule', () => {
   it('pauses reading after 300 s without QUERY ACK but keeps showing frames', () => {
     const lua = idleAddon();
     lua.run('__FA_NS.Assistant.ask("Question")');
-    for (let t = 0; t <= 300; t += 1) tickTo(lua, t);
+    // Tick when the question is sent and at each scheduled read: reads and the pause happen
+    // only then, and a tick for every second of Lua takes longer than the test timeout.
+    tickTo(lua, 0);
+    for (let step = 1, t = 0; t <= 300; step += 1) {
+      t = Number(lua.eval(`__FA_NS.Inbound.offset(${step})`));
+      if (t <= 300) tickTo(lua, t);
+    }
     assert.equal(lua.eval('__FA_NS.Inbound.paused'), 'query_unacked');
     assert.equal(lua.eval('__FA_NS.Outbound.suspended'), 'false');
     const reads = lua.eval('__FA_NS.Inbound.stats.reads');
@@ -610,7 +616,12 @@ describe('item links, Auctionator prices and the map point', () => {
     assert.equal(lua.eval('select(2, __FA_NS.Map.trackEntry(TEST_ENTRY.entryId))'), 'no_waypoint_api');
 
     const link = lua.eval('__FA_NS.Items.mapLink(TEST_ENTRY.entryId, TEST_POINT)');
-    assert.ok(link.startsWith('|cffff9933|Hfamap:') && link.includes('|h[Vance Undergloom (Undercity 61.8, 51.6)]|h|r'), link);
+    assert.ok(link.startsWith('|cffff9933|Hfamap:') && link.includes('|h[Vance Undergloom]|h|r'), link);
+    lua.run(`TIP = {}
+      GameTooltip = { SetOwner = function() end, Show = function() end, AddLine = function(_, text) table.insert(TIP, text) end }
+      __FA_NS.Items.onEnter(UIParent, "famap:" .. TEST_ENTRY.entryId)
+      GameTooltip = nil`);
+    assert.equal(lua.eval('TIP[2]'), 'Vance Undergloom (Undercity 61.8, 51.6)', 'the tooltip keeps zone and coordinates');
     assert.ok(!link.includes('(not verified)'), link);
     assert.ok(link.endsWith(`|Hfatrack:${lua.eval('TEST_ENTRY.entryId')}|h[Track]|h|r`), link);
     const target = link.slice(link.indexOf('|H') + 2, link.indexOf('|h'));
@@ -699,7 +710,7 @@ describe('inline links in the answer text', () => {
       TEST_TEXT, TEST_LINES = __FA_NS.Items.renderEntry(TEST_ENTRY)`);
     const text = lua.eval('TEST_TEXT');
     const potion = '|cffffffff|Hitem:118::::::::12:::::::|h[Minor Healing Potion]|h|r';
-    const point = `|cff66ff66|Hfamap:${ref('9')}|h[Vance Undergloom (Tirisfal Glades 61.8, 51.6)]|h|r |cff40c0ff|Hfatrack:${ref('9')}|h[Track]|h|r`;
+    const point = `|cff66ff66|Hfamap:${ref('9')}|h[Vance Undergloom]|h|r |cff40c0ff|Hfatrack:${ref('9')}|h[Track]|h|r`;
     assert.equal(text, `Take ${potion} and go to ${point}. Also [item] and [[note]].`);
     assert.equal(lua.eval('#TEST_LINES'), '2', 'the map point is inline, so only items and limitations follow');
     assert.equal(lua.eval('TEST_LINES[1]'), '|cffaaaaaaItems:|r |cffffffff|Hitem:7046::::::::12:::::::|h[Azure Silk Hood]|h|r');

@@ -3,10 +3,13 @@
 //   bun tools/diagnose.ts --codex  add two real Codex calls in a temporary database:
 //                                        a question using forever tools and a capability boundary check
 //                                        for commands, files and the browser. Uses subscription quota.
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { resolveClaudePath } from '../bridge/src/ai/claude.js';
 import { CodexAdapter, promptCanary, resolveCodexPath } from '../bridge/src/ai/codex.js';
 import { Bridge } from '../bridge/src/app/bridge.js';
 import { ToolChannelHub } from '../bridge/src/app/tool-channel.js';
@@ -35,6 +38,25 @@ async function staticChecks(): Promise<{ codexPath: string | null }> {
   } else line(false, 'LoD pool', 'addonsPath is not configured (bun run install:addon)');
   line(null, 'Game process', config.gameProcessName ?? 'not set');
   line(null, 'Model', config.modelAdapter);
+  if (config.modelAdapter === 'claude') {
+    const claudePath = resolveClaudePath(config.claudePath);
+    line(claudePath !== null, 'Claude Code CLI', claudePath ?? 'not found (set claudePath)');
+    if (claudePath) {
+      try {
+        const { stdout } = await promisify(execFile)(claudePath, ['auth', 'status'], { windowsHide: true, timeout: 30_000 });
+        const auth = JSON.parse(stdout) as { loggedIn?: boolean; authMethod?: string; subscriptionType?: string };
+        const keyed = Boolean(config.claudeApiKey ?? process.env.ANTHROPIC_API_KEY);
+        line(auth.loggedIn === true || keyed, 'Claude login', keyed ? 'API key' : `${auth.authMethod ?? 'none'}, ${auth.subscriptionType ?? 'no subscription'}`);
+      } catch (error) {
+        line(false, 'Claude login', String(error).slice(0, 200));
+      }
+    }
+  }
+  if (config.modelAdapter === 'openrouter') {
+    const keySource = config.openrouterApiKey ? 'config.json' : process.env.OPENROUTER_API_KEY ? 'OPENROUTER_API_KEY' : null;
+    line(keySource !== null, 'OpenRouter API key', keySource ?? 'not set');
+    line(null, 'OpenRouter model', `${config.openrouterModel}, web search ${config.openrouterWebSearch ? 'on' : 'off'}`);
+  }
   const codexPath = resolveCodexPath(config.codexPath);
   line(codexPath !== null, 'Codex CLI', codexPath ?? 'not found');
   if (codexPath) {

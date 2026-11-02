@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
-import { contractRegistry, ModelReply, SCHEMA_FILES } from '../bridge/src/contracts.js';
+import { contractRegistry, MODEL_REPLY_DESCRIPTIONS, ModelReply, SCHEMA_FILES } from '../bridge/src/contracts.js';
 import { packageRoot } from '../bridge/src/paths.js';
 
 type JsonSchema = Record<string, unknown>;
@@ -23,6 +23,22 @@ function collectRefs(node: unknown, out: Set<string>): void {
         collectRefs(value, out);
       }
     }
+  }
+}
+
+/** Put a description first on the property at path, through arrays and nullable objects. */
+function describeField(schema: JsonSchema, path: string[], description: string): void {
+  let node = schema;
+  for (const [index, key] of path.entries()) {
+    while (!node.properties) {
+      const next = (node.anyOf as JsonSchema[] | undefined)?.find((branch) => branch.type === 'object' || branch.type === 'array') ?? (node.items as JsonSchema | undefined);
+      if (!next) throw new Error(`no object at ${path.slice(0, index).join('.')}`);
+      node = next;
+    }
+    const properties = node.properties as Record<string, JsonSchema>;
+    if (!properties[key]) throw new Error(`no property ${path.slice(0, index + 1).join('.')}`);
+    if (index === path.length - 1) properties[key] = { description, ...properties[key] };
+    else node = properties[key];
   }
 }
 
@@ -84,6 +100,7 @@ export function generateSchemas(): Map<string, string> {
     io: 'input',
     metadata: z.registry(),
   }) as JsonSchema;
+  for (const [path, description] of Object.entries(MODEL_REPLY_DESCRIPTIONS)) describeField(modelReply, path.split('.'), description);
   files.set(
     'model-reply.schema.json',
     `${JSON.stringify({ $schema: DRAFT, title: 'ModelReply', ...strip(modelReply) }, null, 2)}\n`,
