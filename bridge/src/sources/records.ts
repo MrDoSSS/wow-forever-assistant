@@ -22,6 +22,11 @@ export interface ReferencePoint {
   x: number | null;
   y: number | null;
   approxLocation: { title: string; zoneName: string; x: number; y: number; basis: string; sourceUrl: string } | null;
+  /**
+   * ForeverDB players recorded this place in Forever, on the Forever client's map IDs;
+   * absent for Classic fallbacks and QuestieDB points.
+   */
+  seenInForever?: boolean;
 }
 export interface ReferenceFact {
   source: ReferencePoint['source'];
@@ -38,6 +43,8 @@ export function trainerPoint(source: ReferenceSource, trainer: TrainerRecord): R
     source: sourceKindOf(source), type: 'npc', id: trainer.npcId, title: trainer.name, uiMapId: trainer.uiMapId, zoneName, x, y,
     approxLocation: zoneName !== null && x !== null && y !== null
       ? { title: trainer.name, zoneName, x, y, basis: `Trainer record, NPC ${trainer.npcId}`, sourceUrl: source.dataset.pack.site ?? FOREVERDB_URL } : null,
+    // A trainer's place is its NPC record's place.
+    seenInForever: (source.dataset as DecodedDataset).npcs?.[String(trainer.npcId)]?.seenInForever === true,
   };
 }
 
@@ -98,6 +105,7 @@ export function getGameRecord(master: ReferenceSource | null, questie: QuestieSo
           uiMapId: npc.uiMapId, zoneName, x: npc.x, y: npc.y,
           approxLocation: zoneName !== null && npc.x !== null && npc.y !== null
             ? { title: npc.name, zoneName, x: npc.x, y: npc.y, basis: `ForeverDB NPC record, NPC ${npc.id}`, sourceUrl: master.dataset.pack.site ?? FOREVERDB_URL } : null,
+          seenInForever: npc.seenInForever === true,
         });
       }
       const trainers = master.dataset.trainers.filter((trainer) => trainer.npcId === id);

@@ -173,10 +173,12 @@ function Items.onEnter(owner, link)
     if point then
       GameTooltip:AddLine(FA.Map.label(point), 1, 1, 1)
       if point.verified then
-        GameTooltip:AddLine("Verified: map confirmed by your client", 0.4, 1, 0.4)
+        GameTooltip:AddLine(point.basis == "seen_in_forever" and "Verified: seen in Forever by ForeverDB players"
+          or "Verified: map confirmed by your client", 0.4, 1, 0.4)
       else
         GameTooltip:AddLine("Not verified", 1, 0.5, 0.25)
-        if point.source then GameTooltip:AddLine("Source: " .. point.source, 0.8, 0.8, 0.8, true) end
+        local source = FA.Map.sourceLabel(point)
+        if source then GameTooltip:AddLine("Source: " .. source, 0.8, 0.8, 0.8, true) end
       end
     end
     GameTooltip:Show()

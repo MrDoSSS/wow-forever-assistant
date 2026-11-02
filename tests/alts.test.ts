@@ -97,6 +97,7 @@ describe('alts in the addon', () => {
     assert.equal(lua.eval(`${ALT}.summary.level`), '12');
     assert.equal(lua.eval(`${ALT}.summary.classToken`), 'MAGE');
     assert.equal(lua.eval(`${ALT}.summary.observedAt`), String(NOW));
+    assert.equal(lua.eval(`${ALT}.summary.mapId`), '1429', 'the zone map ID, independent of the client language');
     assert.equal(lua.eval(`${ALT}.identity.playerGuid`), 'Player-1-00000001');
     assert.equal(lua.eval(`${ALT}.equipment.items[1].itemId`), '7046');
     assert.equal(lua.eval(`${ALT}.bags.items[1].itemId .. "x" .. ${ALT}.bags.items[1].count`), '118x2');
@@ -117,6 +118,19 @@ describe('alts in the addon', () => {
     assert.equal(lua.eval(`table.concat(${ALT}.recipes[1].spellIds, ",")`), '2963,3275');
     lua.run('C_TradeSkillUI.IsTradeSkillLinked = function() return true end; C_TradeSkillUI.GetAllRecipeIDs = function() return { 1 } end');
     lua.run('__FA_NS.Alts.onEvent("TRADE_SKILL_LIST_UPDATE")');
+    assert.equal(lua.eval(`table.concat(${ALT}.recipes[1].spellIds, ",")`), '2963,3275');
+  });
+
+  it('recognizes a profession window named in another language by the client skill lines', () => {
+    const lua = addonWithAlts();
+    lua.run(`C_TradeSkillUI.GetBaseProfessionInfo = function() return { professionName = "Schneiderei" } end
+      C_TradeSkillUI.GetProfessionInfoByRecipeID = nil
+      C_SkillInfo = {
+        GetNumSkillLines = function() return 2 end,
+        GetSkillLineInfo = function(i) return ({ { name = "Schwerter", skillID = 43 }, { name = "Schneiderei", skillID = 197 } })[i] end,
+      }`);
+    lua.run('__FA_NS.Alts.onEvent("TRADE_SKILL_SHOW")');
+    assert.equal(lua.eval(`${ALT}.recipes[1].skillId`), '197');
     assert.equal(lua.eval(`table.concat(${ALT}.recipes[1].spellIds, ",")`), '2963,3275');
   });
 
@@ -307,6 +321,25 @@ describe('alts in the prompt', () => {
     assert.ok(!resumed.includes('Plans:') && !resumed.includes('<snapshot>'));
     const fresh = correction(null);
     assert.ok(fresh.includes('Sources, in order of trust') && fresh.includes('Plans:') && fresh.includes('<snapshot>'));
+  });
+
+  it('names zones as the references do when the client reports them in another language', () => {
+    const lua = addonWithAlts();
+    addAlt(lua, 'Banker', 'Player-1-00000002', '');
+    addAlt(lua, 'Oldsave', 'Player-1-00000003', '');
+    lua.run(`for _, r in pairs(ForeverAssistantDB.alts) do
+      if r.identity.displayName == "Banker" then r.summary.zoneName = "Unterstadt"; r.summary.mapId = 1458 end
+      if r.identity.displayName == "Oldsave" then r.summary.zoneName = "Unterstadt" end
+    end`);
+    const q = query();
+    const position = q.snapshot.groups.position;
+    assert.equal(position.availability, 'available');
+    if (position.availability === 'available') Object.assign(position.value, { mapKey: 'uiMap:1429', zoneName: 'Wald von Elwynn' });
+    const view = accountView(new AltsSource(writeSaved(lua, tempDir())).load().records, q, characterKeyOf(identity()));
+    const zone = (name: string) => { const s = view.find((c) => c.name === name)!.summary!.value; return [s.zoneName, s.uiMapId]; };
+    assert.deepEqual(zone('Tester'), ['Elwynn Forest', 1429]);
+    assert.deepEqual(zone('Banker'), ['Undercity', 1458]);
+    assert.deepEqual(zone('Oldsave'), ['Unterstadt', null], 'a save without the map ID keeps the client name');
   });
 
   it('lists only the other characters in the brief', () => {

@@ -5,6 +5,8 @@
 import type { QueryBody } from '../contracts.js';
 import type { AltRecord } from '../sources/alts.js';
 import type { RecipeRecord } from '../sources/foreverdb/decode.js';
+import { referenceZoneName } from '../sources/zones.js';
+import { uiMapIdOf } from './locations.js';
 
 /** Profession skill IDs by ForeverDB's English name, matching addon PROFESSION_SKILLS. */
 export const PROFESSION_SKILL_IDS: Record<string, number> = {
@@ -40,7 +42,8 @@ export interface AccountCharacter {
   fullName: string | null;
   realm: string;
   current: boolean;
-  summary: Part<{ classToken: string; raceToken: string; faction: string; level: number; moneyCopper: number | null; zoneName: string | null }> | null;
+  /** zoneName follows the references (English) when uiMapId is known, otherwise the client's language. */
+  summary: Part<{ classToken: string; raceToken: string; faction: string; level: number; moneyCopper: number | null; zoneName: string | null; uiMapId: number | null }> | null;
   equipment: Part<{ slot: number; itemId: number }[]> | null;
   professions: Part<{ skillId: number; name: string; rank: number; maxRank: number }[]> | null;
   recipes: Map<number, { spellIds: Set<number>; observedAt: number }>;
@@ -72,7 +75,10 @@ function fromRecord(record: AltRecord, current: boolean): AccountCharacter {
     realm: record.identity.realm,
     current,
     summary: s
-      ? saved({ classToken: s.classToken, raceToken: s.raceToken, faction: s.faction, level: s.level, moneyCopper: s.moneyCopper ?? null, zoneName: s.zoneName ?? null }, s.observedAt)
+      ? saved({
+          classToken: s.classToken, raceToken: s.raceToken, faction: s.faction, level: s.level, moneyCopper: s.moneyCopper ?? null,
+          zoneName: referenceZoneName(s.mapId ?? null, s.zoneName ?? null), uiMapId: s.mapId ?? null,
+        }, s.observedAt)
       : null,
     equipment: record.equipment ? saved(record.equipment.items, record.equipment.observedAt) : null,
     professions: record.professions ? saved(record.professions.list, record.professions.observedAt) : null,
@@ -92,8 +98,12 @@ function applySnapshot(character: AccountCharacter, query: QueryBody): void {
   const g = query.snapshot.groups;
   if (g.character.availability === 'available') {
     const c = g.character.value;
-    const zoneName = g.position.availability === 'available' && g.position.value.zoneName !== '' ? g.position.value.zoneName : (character.summary?.value.zoneName ?? null);
-    character.summary = snapshotPart({ classToken: c.classToken, raceToken: c.raceToken, faction: c.faction, level: c.level, moneyCopper: c.moneyCopper, zoneName }, g.character.coverage);
+    const position = g.position.availability === 'available' ? g.position.value : null;
+    const uiMapId = position ? (position.mapKey ? uiMapIdOf(position.mapKey) : null) : (character.summary?.value.uiMapId ?? null);
+    const zoneName = position
+      ? referenceZoneName(uiMapId, position.zoneName || null)
+      : (character.summary?.value.zoneName ?? null);
+    character.summary = snapshotPart({ classToken: c.classToken, raceToken: c.raceToken, faction: c.faction, level: c.level, moneyCopper: c.moneyCopper, zoneName, uiMapId }, g.character.coverage);
   }
   if (g.equipment.availability === 'available') {
     const items = g.equipment.value.flatMap((e) => (e.item ? [{ slot: e.slot, itemId: e.item.itemId }] : []));
@@ -149,7 +159,7 @@ export function describeAccount(view: AccountCharacter[]) {
     fullName: c.fullName,
     realm: c.realm,
     current: c.current,
-    ...(c.summary?.value ?? { classToken: null, raceToken: null, faction: null, level: null, moneyCopper: null, zoneName: null }),
+    ...(c.summary?.value ?? { classToken: null, raceToken: null, faction: null, level: null, moneyCopper: null, zoneName: null, uiMapId: null }),
     professions: (c.professions?.value ?? []).map((p) => {
       const recipes = c.recipes.get(p.skillId);
       return { ...p, knownRecipes: recipes ? recipes.spellIds.size : null, recipesObservedAt: iso(recipes?.observedAt ?? null) };

@@ -97,6 +97,8 @@ function readers.summary()
   if type(classToken) ~= "string" or classToken == "" or type(level) ~= "number" or level < 1 then return nil end
   local money = try(GetMoney)
   local zone = try(GetRealZoneText) or try(GetZoneText)
+  -- The zone text is in the client's language; the map ID lets the bridge name it as the references do.
+  local mapId = C_Map and C_Map.GetBestMapForUnit and try(C_Map.GetBestMapForUnit, "player")
   return {
     classToken = classToken,
     raceToken = type(raceToken) == "string" and raceToken or "",
@@ -104,6 +106,7 @@ function readers.summary()
     level = level,
     moneyCopper = type(money) == "number" and money or nil,
     zoneName = type(zone) == "string" and zone or nil,
+    mapId = type(mapId) == "number" and mapId > 0 and mapId or nil,
     fullName = Alts.fullName(),
   }
 end
@@ -167,13 +170,24 @@ function readers.mail()
   return { items = items }
 end
 
-local function skillByName(name)
-  return type(name) == "string" and FA.Context.PROFESSION_SKILLS[name] or nil
-end
-
 local function isProfession(skillId)
   for _, id in pairs(FA.Context.PROFESSION_SKILLS) do if id == skillId then return true end end
   return false
+end
+
+-- Profession window title to skill ID: the enUS and ruRU table, then the client's own
+-- skill lines, whose names are in the client's language.
+local function skillByName(name)
+  if type(name) ~= "string" then return nil end
+  local known = FA.Context.PROFESSION_SKILLS[name]
+  if known then return known end
+  local skills = C_SkillInfo
+  if not (skills and skills.GetNumSkillLines and skills.GetSkillLineInfo) then return nil end
+  for i = 1, try(skills.GetNumSkillLines) or 0 do
+    local line = try(skills.GetSkillLineInfo, i)
+    if type(line) == "table" and line.name == name and isProfession(line.skillID) then return line.skillID end
+  end
+  return nil
 end
 
 local function spellFromLink(link)

@@ -27,6 +27,8 @@ const SECTIONS = {
     level: ID,
     moneyCopper: N.optional(),
     zoneName: S0.optional(),
+    /** uiMapID of the zone; zoneName is in the client's language. Older saves lack it. */
+    mapId: ID.optional(),
     fullName: S0.optional(),
   }),
   equipment: z.object({ ...At, items: z.array(z.object({ slot: z.int().min(1).max(19), itemId: ID })).max(19) }),

@@ -82,17 +82,22 @@ function Map.pointOf(entry, pointIndex)
     if not id or not unit(ref.x) or not unit(ref.y) then return nil end
     local info = C_Map and Core.try(C_Map.GetMapInfo, id)
     local zoneName = type(info) == "table" and info.name or ref.mapKey
-    return { mapId = id, x = ref.x, y = ref.y, zoneName = zoneName, title = titleOf(ref.title), verified = true }
+    return { mapId = id, x = ref.x, y = ref.y, zoneName = zoneName, title = titleOf(ref.title), verified = true, basis = ref.basis }
   end
   local approx = entry.approxLocation
   if type(approx) == "table" and type(approx.x) == "number" and type(approx.y) == "number" then
     -- Reject coordinates outside 0..100 without clamping.
     if approx.x < 0 or approx.x > 100 or approx.y < 0 or approx.y > 100 then return nil end
+    -- The bridge sends the uiMapID of an English zone name, which a client in another
+    -- language could not match by name; older replies have only the name.
+    local id = tonumber(approx.uiMapId)
+    local info = id and C_Map and Core.try(C_Map.GetMapInfo, id)
+    if type(info) ~= "table" then id, info = Map.zoneMapId(approx.zoneName), nil end
     return {
-      mapId = Map.zoneMapId(approx.zoneName),
+      mapId = id,
       x = approx.x / 100,
       y = approx.y / 100,
-      zoneName = tostring(approx.zoneName),
+      zoneName = type(info) == "table" and type(info.name) == "string" and info.name or tostring(approx.zoneName),
       title = titleOf(approx.title),
       verified = false,
       basis = approx.basis,
@@ -110,6 +115,16 @@ end
 function Map.label(point)
   if point.title then return point.title .. " (" .. Map.describe(point) .. ")" end
   return Map.describe(point)
+end
+
+-- Source line of a point: the packaged references by name, a web page by its address.
+function Map.sourceLabel(point)
+  local url = point.source
+  if type(url) ~= "string" or url == "" then return nil end
+  local lower = string.lower(url)
+  if string.find(lower, "foreverdb.net", 1, true) then return "ForeverDB" end
+  if string.find(lower, "github.com/questie/questiedb", 1, true) then return "QuestieDB" end
+  return url
 end
 
 function Map.pointForEntry(entryId, pointIndex)
@@ -181,7 +196,8 @@ function Map.refreshPin()
         GameTooltip:AddLine("Verified", 0.4, 1, 0.4)
       else
         GameTooltip:AddLine("Not verified", 1, 0.5, 0.25)
-        if point.source then GameTooltip:AddLine("Source: " .. point.source, 0.8, 0.8, 0.8, true) end
+        local source = Map.sourceLabel(point)
+        if source then GameTooltip:AddLine("Source: " .. source, 0.8, 0.8, 0.8, true) end
       end
       GameTooltip:AddLine("/fa map clear removes the mark", 0.6, 0.6, 0.6)
       GameTooltip:Show()

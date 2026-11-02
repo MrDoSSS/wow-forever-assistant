@@ -40,6 +40,17 @@
         },
         "sourceUrl": {
           "$ref": "#/$defs/S"
+        },
+        "uiMapId": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ID"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -965,6 +976,14 @@
           "items": {
             "$ref": "#/$defs/H"
           }
+        },
+        "basis": {
+          "default": "client_map",
+          "type": "string",
+          "enum": [
+            "client_map",
+            "seen_in_forever"
+          ]
         }
       },
       "required": [

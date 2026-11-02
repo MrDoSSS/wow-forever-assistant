@@ -1,6 +1,7 @@
 // Classic-era zone names by uiMapID for the English client. The reference stores
-// only trainer uiMapIDs; names are needed for reply text and ApproxLocation,
-// which the addon matches by zoneName. This alone does not verify a map mapping.
+// only trainer uiMapIDs; names are needed for reply text and ApproxLocation. Replies
+// carry the uiMapID of an approximate point too, so the addon finds its map on a client
+// in any language. This alone does not verify a map mapping.
 const ZONES: Record<number, string> = {
   1411: 'Durotar',
   1412: 'Mulgore',
@@ -54,4 +55,20 @@ const ZONES: Record<number, string> = {
 
 export function zoneNameOf(uiMapId: number | null): string | null {
   return uiMapId === null ? null : (ZONES[uiMapId] ?? null);
+}
+
+const normalize = (name: string) => name.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+const BY_NAME = new Map(Object.entries(ZONES).map(([id, name]) => [normalize(name), Number(id)]));
+
+/** uiMapID of an English zone name, so the addon can open a point without matching names. */
+export function zoneIdOf(zoneName: string): number | null {
+  return BY_NAME.get(normalize(zoneName)) ?? null;
+}
+
+/**
+ * A character's zone as the references name it: by its uiMapID when the table knows it,
+ * otherwise the client's zone text, which a non-English client reports in its own language.
+ */
+export function referenceZoneName(uiMapId: number | null, clientName: string | null): string | null {
+  return zoneNameOf(uiMapId) ?? (clientName || null);
 }

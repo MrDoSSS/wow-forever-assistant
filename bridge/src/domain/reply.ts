@@ -15,10 +15,14 @@ import {
   type MapLocation,
 } from '../contracts.js';
 import type { Store, VerifiedRefRow } from '../storage/store.js';
+import { zoneIdOf } from '../sources/zones.js';
 import { PROFESSION_SKILL_IDS } from './alts.js';
 import { fitFont } from './glyphs.js';
 
 export type ReplyCheck = { ok: true; reply: GameReply } | { ok: false; reason: string };
+
+/** An approximate point with the uiMapID of its English zone, for clients in other languages. */
+const withMapId = <T extends { zoneName: string }>(point: T | null) => (point === null ? null : { ...point, uiMapId: zoneIdOf(point.zoneName) });
 
 // Reply text markers: the addon replaces them inline with item or map links.
 const MARKER = /\[\[([^\]]*)\]\]/g;
@@ -133,7 +137,7 @@ export function verifyModelReply(output: unknown, store: Store, attemptIds: read
       if (typeof row === 'string') return { ok: false, reason: row };
       ref = VerifiedLocation.parse(JSON.parse(row.body_json));
     }
-    locations.push({ locationRef: ref, approxLocation: point.approxLocation });
+    locations.push({ locationRef: ref, approxLocation: withMapId(point.approxLocation) });
   }
 
   for (const calculationId of reply.calculationIds) {
@@ -210,7 +214,7 @@ export function verifyModelReply(output: unknown, store: Store, attemptIds: read
     itemRefs,
     evidenceIds: reply.evidenceIds,
     locationRef,
-    approxLocation: reply.approxLocation,
+    approxLocation: withMapId(reply.approxLocation),
     locations,
     calculationIds: reply.calculationIds,
     limitations: reply.limitations,

@@ -91,6 +91,7 @@ export function findServices(master: ReferenceSource | null, questie: QuestieSou
         uiMapId: npc.uiMapId, zoneName, x: npc.x, y: npc.y,
         approxLocation: zoneName !== null && npc.x !== null && npc.y !== null
           ? { title: npc.name, zoneName, x: npc.x, y: npc.y, basis: `ForeverDB vendor record, NPC ${npc.id}`, sourceUrl: master.dataset.pack.site ?? 'https://foreverdb.net' } : null,
+        seenInForever: npc.seenInForever === true,
         ...(filter.itemId !== null ? {
           vendorPriceCopper: offer.priceCopper, vendorStack: offer.stack,
           unitPriceCopper: offer.priceCopper / offer.stack,

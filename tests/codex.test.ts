@@ -384,6 +384,7 @@ describe('tool channel', { skip: !windows }, () => {
       [{ locationRefId: null, approxLocation: { title: 'Vendor', zoneName: 'Elwynn Forest', x: 40, y: 60, basis: 'b', sourceUrl: 'https://example.com' } }]), env.store, [input.attemptId]);
     assert.ok(marked.ok, marked.ok ? '' : marked.reason);
     assert.equal(marked.ok && marked.reply.plan!.steps[0]!.text, 'Buy 3 [[item]] at [[map]]');
+    assert.equal(marked.ok && marked.reply.locations![0]!.approxLocation!.uiMapId, 1429, 'the addon opens the point by map ID in any client language');
     assert.match(reason([step, { ...step, text: `Buy [[item:${randomId()}]]` }]), /plan step 2: text marker \[\[item:[0-9a-f]+\]\] is not the step's own item or place/);
     assert.match(reason([{ ...step, text: 'Go to [[map:1]]' }]), /plan step 1: text marker \[\[map:1\]\] is not the step's own/);
     assert.match(reason([{ ...step, itemRefId: null, quantity: null, text: 'Buy [[item]]' }]), /needs the step's itemRefId/);
@@ -428,7 +429,23 @@ describe('tool channel', { skip: !windows }, () => {
       sourceUrl: 'https://foreverdb.net',
     });
     assert.equal(result.evidenceIds.length, 1);
-    assert.ok(trainers.every((t) => t.locationRefId === null), 'the snapshot map is not confirmed');
+    // The snapshot map is not confirmed: only a place ForeverDB players recorded in Forever is verified.
+    assert.deepEqual(trainers.filter((t) => t.locationRefId !== null).map((t) => t.id), [1317]);
+    const ref = env.store.getVerifiedRef(lucan.locationRefId as string)!;
+    assert.deepEqual(JSON.parse(ref.body_json).basis, 'seen_in_forever');
+    assert.equal(JSON.parse(ref.body_json).mapKey, 'uiMap:1453');
+  });
+
+  it('finds the snapshot zone by its map ID when the client names it in another language', async () => {
+    const { call } = await attemptWithChannel(env, (query) => {
+      const position = query.snapshot.groups.position;
+      if (position.availability === 'available') Object.assign(position.value, { mapKey: 'uiMap:1453', zoneName: 'Sturmwind' });
+    });
+    const result = await call('find_services', { service: 'trainer', itemId: null, zoneName: null, cursor: null, profession: 'Enchanting', classToken: null, forCharacter: null });
+    assert.equal(result.status, 'ok');
+    assert.ok(result.limitations.some((l) => l.includes('zone Stormwind City')), result.limitations.join(' | '));
+    const lucan = (result.data.services as { id: number; inCharacterZone: boolean }[]).find((t) => t.id === 1317)!;
+    assert.equal(lucan.inCharacterZone, true);
   });
 
   it('lists trainers for an alt by its faction and zone', async () => {
@@ -459,7 +476,7 @@ describe('tool channel', { skip: !windows }, () => {
       [input.attemptId],
     );
     assert.ok(check.ok, check.ok ? '' : check.reason);
-    assert.deepEqual(check.ok && { ...check.reply.locationRef, refId: 'x', x: 0, y: 0, evidenceIds: [] }, { refId: 'x', entityKind: 'npc', entityId: '1317', title: 'Lucan Cordell', mapKey: 'uiMap:1453', x: 0, y: 0, evidenceIds: [] });
+    assert.deepEqual(check.ok && { ...check.reply.locationRef, refId: 'x', x: 0, y: 0, evidenceIds: [] }, { refId: 'x', entityKind: 'npc', entityId: '1317', title: 'Lucan Cordell', mapKey: 'uiMap:1453', x: 0, y: 0, evidenceIds: [], basis: 'client_map' });
     assert.ok(check.ok && Math.abs(check.reply.locationRef!.x - 0.529) < 1e-9 && Math.abs(check.reply.locationRef!.y - 0.744) < 1e-9);
     const output = { status: 'answer', text: 'Visit [[map:1]] and [[map:2]].', itemRefIds: [], evidenceIds: result.evidenceIds,
       locationRefId: null, approxLocation: null, calculationIds: [], limitations: [], clarification: null,

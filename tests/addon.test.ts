@@ -622,6 +622,13 @@ describe('item links, Auctionator prices and the map point', () => {
       __FA_NS.Items.onEnter(UIParent, "famap:" .. TEST_ENTRY.entryId)
       GameTooltip = nil`);
     assert.equal(lua.eval('TIP[2]'), 'Vance Undergloom (Undercity 61.8, 51.6)', 'the tooltip keeps zone and coordinates');
+    lua.run(`TIP = {}
+      table.insert(__FA_NS.Assistant.state.history, { entryId = "seen", role = "assistant",
+        locationRef = { mapKey = "uiMap:1429", title = "Vendor", x = 0.4, y = 0.6, basis = "seen_in_forever" } })
+      GameTooltip = { SetOwner = function() end, Show = function() end, AddLine = function(_, text) table.insert(TIP, text) end }
+      __FA_NS.Items.onEnter(UIParent, "famap:seen")
+      GameTooltip = nil`);
+    assert.equal(lua.eval('TIP[3]'), 'Verified: seen in Forever by ForeverDB players');
     assert.ok(!link.includes('(not verified)'), link);
     assert.ok(link.endsWith(`|Hfatrack:${lua.eval('TEST_ENTRY.entryId')}|h[Track]|h|r`), link);
     const target = link.slice(link.indexOf('|H') + 2, link.indexOf('|h'));
@@ -638,6 +645,31 @@ describe('item links, Auctionator prices and the map point', () => {
     assert.equal(lua.eval('select(2, __FA_NS.Map.show(TEST_POINT))'), 'no_map');
     assert.equal(lua.eval('__FA_NS.Map.pointOf({ approxLocation = { zoneName = "Undercity", x = 101, y = 20, basis = "b", sourceUrl = "u" } })'), 'nil');
     assert.equal(lua.eval('__FA_NS.Map.pointOf({ locationRef = { mapKey = "zone:1", x = 0.5, y = 0.5 } })'), 'nil');
+  });
+
+  it('opens an approximate point by its uiMapID on a client that names zones in another language', () => {
+    const lua = new LuaHost();
+    lua.loadAddon();
+    lua.run(`local english = C_Map.GetMapInfo
+      C_Map.GetMapInfo = function(id)
+        local info = english(id)
+        if info then return { name = "Karte " .. id, mapType = info.mapType, parentMapID = info.parentMapID } end
+      end`);
+    const point = (extra: string) => `__FA_NS.Map.pointOf({ approxLocation = { zoneName = "Elwynn Forest", x = 40, y = 60, basis = "b", sourceUrl = "u"${extra} } })`;
+    lua.run(`TEST_POINT = ${point(', uiMapId = 1429')}`);
+    assert.equal(lua.eval('TEST_POINT.mapId .. "/" .. TEST_POINT.zoneName .. "/" .. tostring(TEST_POINT.verified)'), '1429/Karte 1429/false');
+    assert.equal(lua.eval(`${point('')}.mapId`), 'nil', 'an older reply has only the English name');
+    assert.equal(lua.eval(`${point(', uiMapId = 99999')}.mapId`), 'nil', 'an ID the client does not know falls back to the name');
+  });
+
+  it('names the packaged references as the source of a point and keeps a web address', () => {
+    const lua = new LuaHost();
+    lua.loadAddon();
+    const label = (url: string) => lua.eval(`__FA_NS.Map.sourceLabel({ source = ${LuaHost.literal(url)} })`);
+    assert.equal(label('https://github.com/Questie/QuestieDB/releases/download/v1.0.10/QuestieDB-Forever.zip'), 'QuestieDB');
+    assert.equal(label('https://foreverdb.net'), 'ForeverDB');
+    assert.equal(label('https://www.wowhead.com/classic/npc=1317'), 'https://www.wowhead.com/classic/npc=1317');
+    assert.equal(lua.eval('__FA_NS.Map.sourceLabel({})'), 'nil');
   });
 
   it('keeps the unverified point and limitations when the bridge history replaces the chat', () => {

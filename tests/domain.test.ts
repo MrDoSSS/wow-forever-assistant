@@ -160,12 +160,16 @@ describe('map points', () => {
     assert.equal(confirmedMapOf(disabled as unknown as Snapshot), null);
   });
 
-  it('builds a verified location only on the confirmed map and with coordinates', () => {
+  it('builds a verified location on the confirmed map, or for a place recorded in Forever, with coordinates', () => {
     const vance = { entityKind: 'npc' as const, entityId: '5695', title: 'Vance Undergloom', uiMapId: 1420, x: 0.618, y: 0.516 };
-    assert.deepEqual(verifiedLocationOf(vance, 1420, ['e'.repeat(32)]), { entityKind: 'npc', entityId: '5695', title: 'Vance Undergloom', mapKey: 'uiMap:1420', x: 0.618, y: 0.516, evidenceIds: ['e'.repeat(32)] });
+    assert.deepEqual(verifiedLocationOf(vance, 1420, ['e'.repeat(32)]), { entityKind: 'npc', entityId: '5695', title: 'Vance Undergloom', mapKey: 'uiMap:1420', x: 0.618, y: 0.516, evidenceIds: ['e'.repeat(32)], basis: 'client_map' });
     assert.equal(verifiedLocationOf(vance, 1458, []), null);
     assert.equal(verifiedLocationOf(vance, null, []), null);
     assert.equal(verifiedLocationOf({ ...vance, x: null, y: null }, 1420, []), null);
+    const seen = { ...vance, seenInForever: true };
+    assert.deepEqual(verifiedLocationOf(seen, null, []), { ...verifiedLocationOf(vance, 1420, []), basis: 'seen_in_forever' });
+    assert.equal(verifiedLocationOf(seen, 1420, [])?.basis, 'client_map', 'the confirmed map takes precedence');
+    assert.equal(verifiedLocationOf({ ...seen, uiMapId: null }, null, []), null);
   });
 });
 

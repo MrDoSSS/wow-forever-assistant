@@ -37,6 +37,7 @@ import { uiMapIdOf } from '../domain/locations.js';
 import { searchGameData } from '../sources/search.js';
 import { getGameRecord, type ReferencePoint } from '../sources/records.js';
 import { findServices, type ServiceFilter } from '../sources/services.js';
+import { referenceZoneName } from '../sources/zones.js';
 import { vendorPrices } from '../sources/pricing.js';
 import { createCraftPurchaser, type PurchaseCharacter } from '../sources/craft-purchases.js';
 import type { PriceObservationRow, Store, VerifiedRefRow } from '../storage/store.js';
@@ -103,6 +104,17 @@ interface Channel {
 }
 
 const unavailable = (limitation: string): Prepared => ({ status: 'source_unavailable', limitations: [limitation] });
+
+/**
+ * The snapshot character's zone: its uiMapID, and the zone name as the references spell it
+ * (the client's zone text is in the client's language).
+ */
+function snapshotZone(snapshot: QueryBody['snapshot']): { zoneName: string | null; uiMapId: number | null } {
+  const position = snapshot.groups.position;
+  if (position.availability !== 'available') return { zoneName: null, uiMapId: null };
+  const uiMapId = position.value.mapKey ? uiMapIdOf(position.value.mapKey) : null;
+  return { zoneName: referenceZoneName(uiMapId, position.value.zoneName || null), uiMapId };
+}
 const notFound = (limitations: string[]): Prepared => ({ status: 'not_found', limitations });
 
 export function observationOf(row: PriceObservationRow): PriceObservation {
@@ -375,6 +387,7 @@ export class ToolChannelHub {
     const body = verifiedLocationOf({
       entityKind: point.type === 'npc' ? 'npc' : 'other', entityId: String(point.id), title: point.title,
       uiMapId: point.uiMapId, x: point.x === null ? null : point.x / 100, y: point.y === null ? null : point.y / 100,
+      seenInForever: point.seenInForever,
     }, confirmedMap, evidenceIds);
     return { ...point, locationRefId: body ? reg.ref('location', (refId) => ({ refId, ...body })) : null };
   }
@@ -426,9 +439,7 @@ export class ToolChannelHub {
     }
     const position = args.forCharacter === null && channel.ctx.query.snapshot.groups.position.availability === 'available'
       ? channel.ctx.query.snapshot.groups.position.value : null;
-    const page = findServices(master, questie, args as unknown as ServiceFilter, {
-      ...who, uiMapId: position?.mapKey ? uiMapIdOf(position.mapKey) : null, x: position?.x ?? null, y: position?.y ?? null,
-    }, offset);
+    const page = findServices(master, questie, args as unknown as ServiceFilter, { ...who, x: position?.x ?? null, y: position?.y ?? null }, offset);
     if (!page.available) return { status: 'source_unavailable', limitations: page.limitations };
     const limitations = [...page.limitations,
       `services_for: ${who.name} (${who.faction ?? 'unknown faction'}, zone ${who.zoneName ?? 'unknown'}); distances only compare points within one map`,
@@ -490,19 +501,19 @@ export class ToolChannelHub {
   }
 
   /** Character visiting a trainer: the snapshot character or a saved alt selected by name. */
-  private trainee(ctx: AttemptContext, name: string | null): { name: string; faction: string | null; zoneName: string | null } | { missing: string } {
+  private trainee(ctx: AttemptContext, name: string | null): { name: string; faction: string | null; zoneName: string | null; uiMapId: number | null } | { missing: string } {
     if (name !== null) {
       const view = this.account(ctx)?.view ?? [];
       const wanted = name.toLowerCase();
       const found = view.find((c) => c.name.toLowerCase() === wanted || c.fullName?.toLowerCase() === wanted);
       if (!found) return { missing: name };
-      return { name: found.name, faction: found.summary?.value.faction ?? null, zoneName: found.summary?.value.zoneName ?? null };
+      return { name: found.name, faction: found.summary?.value.faction ?? null, zoneName: found.summary?.value.zoneName ?? null, uiMapId: found.summary?.value.uiMapId ?? null };
     }
     const g = ctx.query.snapshot.groups;
     return {
       name: ctx.query.identity.displayName,
       faction: g.character.availability === 'available' ? g.character.value.faction : null,
-      zoneName: g.position.availability === 'available' && g.position.value.zoneName !== '' ? g.position.value.zoneName : null,
+      ...snapshotZone(ctx.query.snapshot),
     };
   }
 
@@ -571,7 +582,7 @@ export class ToolChannelHub {
     const position = ctx.query.snapshot.groups.position;
     const buyer = {
       faction: character.availability === 'available' ? character.value.faction : null,
-      zoneName: position.availability === 'available' ? position.value.zoneName : null,
+      zoneName: snapshotZone(ctx.query.snapshot).zoneName,
     };
     return new Map(items.map((itemId) => [itemId, chooseCraftPrice(itemId, observations, market, vendorPrices(source, channel.questie, itemId, buyer))]));
   }
@@ -749,12 +760,11 @@ export class ToolChannelHub {
     const position = ctx.query.snapshot.groups.position;
     const current: PurchaseCharacter = {
       name: buyer, faction: character.availability === 'available' ? character.value.faction : null,
-      zoneName: position.availability === 'available' ? position.value.zoneName || null : null,
-      uiMapId: position.availability === 'available' && position.value.mapKey ? uiMapIdOf(position.value.mapKey) : null,
+      ...snapshotZone(ctx.query.snapshot),
       x: position.availability === 'available' ? position.value.x : null, y: position.availability === 'available' ? position.value.y : null,
     };
     const characters: PurchaseCharacter[] = view.map((c) => ({ name: c.name, faction: c.summary?.value.faction ?? null,
-      zoneName: c.summary?.value.zoneName ?? null, uiMapId: null, x: null, y: null }));
+      zoneName: c.summary?.value.zoneName ?? null, uiMapId: c.summary?.value.uiMapId ?? null, x: null, y: null }));
     const purchaseFor = createCraftPurchaser({ source, questie: channel.questie, current, characters,
       observations, expectedMarket: this.expectedMarket(ctx, observations) });
 

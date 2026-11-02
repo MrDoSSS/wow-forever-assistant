@@ -414,6 +414,8 @@ export type ReplyStatus = z.output<typeof ReplyStatus>;
 const ReplyText = utf8String(1, LIMITS.replyTextBytes);
 
 // title names the NPC or place at the point. Older saved replies have no title.
+// uiMapId is set by the bridge from the English zoneName so the addon opens the map
+// on a client in any language; null when the zone is unknown or in older replies.
 export const ApproxLocation = named(
   'ApproxLocation',
   z.strictObject({
@@ -423,12 +425,13 @@ export const ApproxLocation = named(
     y: z.number().min(0).max(100),
     basis: S,
     sourceUrl: S,
+    uiMapId: ID.nullable().default(null),
   }),
 );
 export type ApproxLocation = z.output<typeof ApproxLocation>;
 
-/** The model must name the point. */
-const ModelApproxLocation = ApproxLocation.extend({ title: S });
+/** The model must name the point; the bridge adds uiMapId. */
+const ModelApproxLocation = ApproxLocation.omit({ uiMapId: true }).extend({ title: S });
 
 const ModelMapLocation = z.strictObject({
   locationRefId: H.nullable(),
@@ -587,6 +590,9 @@ export const VerifiedLocation = named(
     x: Unit,
     y: Unit,
     evidenceIds: EvidenceIds,
+    // Why the point is trusted: on the map the client confirmed, or a place ForeverDB
+    // players recorded in Forever. Older saved points were all client_map.
+    basis: z.enum(['client_map', 'seen_in_forever']).default('client_map'),
   }),
 );
 export type VerifiedLocation = z.output<typeof VerifiedLocation>;

@@ -6,7 +6,7 @@ import type { ActivePlanBrief } from '../domain/plan.js';
 import type { AttemptInput } from './adapter.js';
 
 const LOCATION_RULES = `Map locations:
-- locations: up to 20 requested places with known coordinates, in order ([] if none); legacy locationRefId and approxLocation stay null. Each point has exactly one non-null field: locationRefId from a tool (issued only on a map the snapshot confirms) or approxLocation (the tool's approxLocation, or zoneName, x and y in 0..100 with basis and sourceUrl from a web page). title is the NPC or place as the English client spells it. Never invent or average coordinates.
+- locations: up to 20 requested places with known coordinates, in order ([] if none); legacy locationRefId and approxLocation stay null. Each point has exactly one non-null field: locationRefId from a tool (issued for places on the map the snapshot confirms or recorded in Forever by ForeverDB players) or approxLocation (the tool's approxLocation, or zoneName, x and y in 0..100 with basis and sourceUrl from a web page). title is the NPC or place as the English client spells it. Never invent or average coordinates.
 - Write [[map:N]] (1-based index into locations) where each place is mentioned: the addon shows a map link and Track action for each, so never list several places as plain coordinates. Over 20 places: explain the limit and offer the next batch.`;
 
 const WORLD_RULES = `Game references:

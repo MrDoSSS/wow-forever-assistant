@@ -1,9 +1,9 @@
-// Map points. A verified location needs a mapKey from a client-verified
-// map mapping. The question snapshot supplies this mapping: the client reports
-// that its current uiMapID has a zone name (GetBestMapForUnit +
-// GetZoneText). If that name matches our table for the same uiMapID,
-// the client confirms the reference coordinate system for that map. Other
-// maps remain unverified (ApproxLocation).
+// Map points. A verified location has one of two bases. client_map: the question
+// snapshot reports that its current uiMapID has a zone name (GetBestMapForUnit +
+// GetZoneText); if that name matches our table for the same uiMapID, the client
+// confirms the reference coordinate system for that map. seen_in_forever: ForeverDB
+// players recorded the place in Forever, with map IDs from the Forever client's own
+// tables. Other places remain unverified (ApproxLocation).
 import type { Snapshot, VerifiedLocation } from '../contracts.js';
 import { zoneNameOf } from '../sources/zones.js';
 
@@ -39,10 +39,17 @@ export interface LocatedEntity {
   /** Coordinates as 0..1 fractions of uiMapId. */
   x: number | null;
   y: number | null;
+  /** ForeverDB players recorded the place in Forever, on the Forever client's map IDs. */
+  seenInForever?: boolean;
 }
 
-/** VerifiedLocation body without refId if the entity's map is confirmed; otherwise null. */
+/**
+ * VerifiedLocation body without refId if the entity is on the map the client confirmed,
+ * or ForeverDB players recorded its place in Forever; otherwise null.
+ */
 export function verifiedLocationOf(entity: LocatedEntity, confirmedMap: number | null, evidenceIds: string[]): Omit<VerifiedLocation, 'refId'> | null {
-  if (confirmedMap === null || entity.uiMapId !== confirmedMap || entity.x === null || entity.y === null) return null;
-  return { entityKind: entity.entityKind, entityId: entity.entityId, title: entity.title, mapKey: mapKeyOf(confirmedMap), x: entity.x, y: entity.y, evidenceIds };
+  if (entity.uiMapId === null || entity.x === null || entity.y === null) return null;
+  const basis = entity.uiMapId === confirmedMap ? 'client_map' : entity.seenInForever ? 'seen_in_forever' : null;
+  if (basis === null) return null;
+  return { entityKind: entity.entityKind, entityId: entity.entityId, title: entity.title, mapKey: mapKeyOf(entity.uiMapId), x: entity.x, y: entity.y, evidenceIds, basis };
 }
