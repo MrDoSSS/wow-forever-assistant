@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forever-assistant.local/schemas/pricing.schema.json",
+  "title": "Forever Assistant v1: pricing",
+  "roots": [
+    "PriceObservation",
+    "Calculation"
+  ],
+  "$defs": {
+    "Calculation": {
+      "type": "object",
+      "properties": {
+        "calculationId": {
+          "$ref": "#/$defs/H"
+        },
+        "recipeRefId": {
+          "$ref": "#/$defs/H"
+        },
+        "crafts": {
+          "$ref": "#/$defs/N"
+        },
+        "lines": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "itemId": {
+                "$ref": "#/$defs/ID"
+              },
+              "needed": {
+                "$ref": "#/$defs/N"
+              },
+              "knownOwned": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/N"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "missing": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/N"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "itemId",
+              "needed",
+              "knownOwned",
+              "missing"
+            ]
+          }
+        },
+        "priceTotalCopper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unpricedItemIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        },
+        "limitations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        }
+      },
+      "required": [
+        "calculationId",
+        "recipeRefId",
+        "crafts",
+        "lines",
+        "priceTotalCopper",
+        "unpricedItemIds",
+        "limitations"
+      ]
+    },
+    "H": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "ID": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "ItemInput": {
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "itemLink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "itemId",
+        "itemLink"
+      ]
+    },
+    "N": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "PriceObservation": {
+      "type": "object",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/ItemInput"
+        },
+        "marketKey": {
+          "$ref": "#/$defs/S"
+        },
+        "unit": {
+          "type": "string",
+          "const": "per_item"
+        },
+        "priceCopper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readOriginSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "readAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "sourceObservedAtMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ageDays": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agePrecision": {
+          "type": "string",
+          "enum": [
+            "day_bucket",
+            "unknown"
+          ]
+        },
+        "rawExactness": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "exactness": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "fallback",
+            "unknown"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "const": "auctionator_v1"
+        },
+        "sourceVersion": {
+          "$ref": "#/$defs/S"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PriceUnavailableReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "marketKey",
+        "unit",
+        "priceCopper",
+        "readOriginSessionId",
+        "readAtSessionMs",
+        "sourceObservedAtMs",
+        "ageDays",
+        "agePrecision",
+        "rawExactness",
+        "exactness",
+        "source",
+        "sourceVersion",
+        "unavailableReason"
+      ]
+    },
+    "PriceUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "api_unavailable",
+        "call_error",
+        "not_ready",
+        "no_price",
+        "price_lookup_timeout"
+      ]
+    },
+    "S": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    }
+  }
+}

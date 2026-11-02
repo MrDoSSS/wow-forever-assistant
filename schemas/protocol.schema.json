@@ -1,0 +1,3437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forever-assistant.local/schemas/protocol.schema.json",
+  "title": "Forever Assistant v1: protocol",
+  "roots": [
+    "Message",
+    "InboxPacket",
+    "Delivery",
+    "MessageKey",
+    "RequestKey",
+    "IpcRequest",
+    "IpcResult"
+  ],
+  "$defs": {
+    "ActivePlanRef": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/RequestKey"
+        },
+        "done": {
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        }
+      },
+      "required": [
+        "request",
+        "done"
+      ]
+    },
+    "ApproxLocation": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "zoneName": {
+          "$ref": "#/$defs/S"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "basis": {
+          "$ref": "#/$defs/S"
+        },
+        "sourceUrl": {
+          "$ref": "#/$defs/S"
+        }
+      },
+      "required": [
+        "zoneName",
+        "x",
+        "y",
+        "basis",
+        "sourceUrl"
+      ],
+      "additionalProperties": false
+    },
+    "BagsGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BagsGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "BagsGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "maxItems": 4096,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "bag": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4
+              },
+              "slot": {
+                "$ref": "#/$defs/ID"
+              },
+              "item": {
+                "$ref": "#/$defs/ItemInput"
+              },
+              "count": {
+                "$ref": "#/$defs/ID"
+              }
+            },
+            "required": [
+              "bag",
+              "slot",
+              "item",
+              "count"
+            ]
+          }
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "CancelBody": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/RequestKey"
+        }
+      },
+      "required": [
+        "request"
+      ]
+    },
+    "CancelMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "CANCEL"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/CancelBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "CharacterGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CharacterGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "CharacterGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "type": "object",
+          "properties": {
+            "classToken": {
+              "$ref": "#/$defs/S"
+            },
+            "raceToken": {
+              "$ref": "#/$defs/S"
+            },
+            "faction": {
+              "type": "string",
+              "enum": [
+                "alliance",
+                "horde",
+                "neutral",
+                "unknown"
+              ]
+            },
+            "level": {
+              "$ref": "#/$defs/ID"
+            },
+            "moneyCopper": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/N"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "classToken",
+            "raceToken",
+            "faction",
+            "level",
+            "moneyCopper"
+          ]
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "CharacterKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ClearHistoryBody": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/Identity"
+        },
+        "operationId": {
+          "$ref": "#/$defs/H"
+        },
+        "conversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "replacementConversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "deleteChat": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "identity",
+        "operationId",
+        "conversationId",
+        "replacementConversationId"
+      ]
+    },
+    "ClearHistoryMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "CLEAR_HISTORY"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/ClearHistoryBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "ClearedDeliveryBody": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/H"
+        },
+        "oldConversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "replacementConversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "historyRevision": {
+          "$ref": "#/$defs/N"
+        }
+      },
+      "required": [
+        "operationId",
+        "oldConversationId",
+        "replacementConversationId",
+        "historyRevision"
+      ]
+    },
+    "ClientItemInfo": {
+      "type": "object",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/ItemInput"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "itemLevel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requiredLevel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "itemType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "itemSubType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equipSlot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sellPriceCopper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tooltip": {
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "not_cached",
+                "api_unavailable"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "name",
+        "quality",
+        "itemLevel",
+        "requiredLevel",
+        "itemType",
+        "itemSubType",
+        "equipSlot",
+        "sellPriceCopper",
+        "tooltip",
+        "unavailableReason"
+      ]
+    },
+    "Delivery": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "hello"
+            },
+            "request": {
+              "type": "null"
+            },
+            "body": {
+              "$ref": "#/$defs/HelloDeliveryBody"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "history"
+            },
+            "request": {
+              "type": "null"
+            },
+            "body": {
+              "$ref": "#/$defs/HistoryDeliveryBody"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "status"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "body": {
+              "$ref": "#/$defs/StatusDeliveryBody"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "price_lookup"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "body": {
+              "$ref": "#/$defs/PriceLookupDeliveryBody"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "reply"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "body": {
+              "$ref": "#/$defs/GameReply"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "error"
+            },
+            "request": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RequestKey"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "body": {
+              "$ref": "#/$defs/ErrorDeliveryBody"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "deliveryId": {
+              "$ref": "#/$defs/H"
+            },
+            "type": {
+              "type": "string",
+              "const": "cleared"
+            },
+            "request": {
+              "type": "null"
+            },
+            "body": {
+              "$ref": "#/$defs/ClearedDeliveryBody"
+            }
+          },
+          "required": [
+            "deliveryId",
+            "type",
+            "request",
+            "body"
+          ]
+        }
+      ]
+    },
+    "EquipmentGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/EquipmentGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "EquipmentGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "maxItems": 19,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "slot": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 19
+              },
+              "item": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ItemInput"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "slot",
+              "item"
+            ]
+          }
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "model_error",
+        "invalid_result",
+        "external_outcome_unknown",
+        "process_stop_unconfirmed",
+        "process_host_unavailable",
+        "model_profile_unsupported",
+        "busy",
+        "history_changed",
+        "history_cleared",
+        "storage_error"
+      ]
+    },
+    "ErrorDeliveryBody": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "text": {
+          "$ref": "#/$defs/S"
+        }
+      },
+      "required": [
+        "code",
+        "text"
+      ]
+    },
+    "GamePlan": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "steps": {
+          "minItems": 1,
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GamePlanStep"
+          }
+        },
+        "revises": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "steps"
+      ]
+    },
+    "GamePlanStep": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PlanStepKind"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "character": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "item": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifiedItem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mailTo": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moneyCopper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recipeSpellId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mailFrom": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skillId": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skillRank": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 450
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "character",
+        "item",
+        "quantity",
+        "location",
+        "mailTo",
+        "moneyCopper",
+        "recipeSpellId"
+      ]
+    },
+    "GameReply": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ReplyStatus"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "itemRefs": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerifiedItem"
+          }
+        },
+        "evidenceIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "locationRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifiedLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approxLocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApproxLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "locations": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MapLocation"
+          }
+        },
+        "calculationIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "limitations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        },
+        "clarification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GamePlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "text",
+        "itemRefs",
+        "evidenceIds",
+        "locationRef",
+        "approxLocation",
+        "calculationIds",
+        "limitations",
+        "clarification"
+      ]
+    },
+    "GroupDisabled": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "disabled"
+        },
+        "coverage": {
+          "type": "string",
+          "const": "unknown"
+        },
+        "observedAtSessionMs": {
+          "type": "null"
+        },
+        "reason": {
+          "type": "string",
+          "const": "user_disabled"
+        },
+        "value": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "GroupName": {
+      "type": "string",
+      "enum": [
+        "character",
+        "equipment",
+        "quests",
+        "talents",
+        "position",
+        "bags",
+        "professions",
+        "prices"
+      ]
+    },
+    "GroupUnavailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "unavailable"
+        },
+        "coverage": {
+          "type": "string",
+          "const": "unknown"
+        },
+        "observedAtSessionMs": {
+          "type": "null"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "api_unavailable",
+            "not_ready"
+          ]
+        },
+        "value": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "H": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "HelloBody": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/Identity"
+        },
+        "deliverySessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "conversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "policy": {
+          "$ref": "#/$defs/Policy"
+        },
+        "pendingRequests": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequestKey"
+          }
+        },
+        "appliedDeliveryIds": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "historyCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/H"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "identity",
+        "deliverySessionId",
+        "conversationId",
+        "policy",
+        "pendingRequests",
+        "appliedDeliveryIds",
+        "historyCursor"
+      ]
+    },
+    "HelloDeliveryBody": {
+      "type": "object",
+      "properties": {
+        "conversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "policyRevision": {
+          "$ref": "#/$defs/U32"
+        },
+        "historyRevision": {
+          "$ref": "#/$defs/N"
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "map": {
+              "type": "boolean"
+            },
+            "auctionator": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "map",
+            "auctionator"
+          ]
+        },
+        "limitations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        }
+      },
+      "required": [
+        "conversationId",
+        "policyRevision",
+        "historyRevision",
+        "capabilities",
+        "limitations"
+      ]
+    },
+    "HelloMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "HELLO"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/HelloBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "HistoryDeliveryBody": {
+      "type": "object",
+      "properties": {
+        "conversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "historyRevision": {
+          "$ref": "#/$defs/N"
+        },
+        "entries": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HistoryEntry"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/H"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "conversationId",
+        "historyRevision",
+        "entries",
+        "nextCursor"
+      ]
+    },
+    "HistoryEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "entryId": {
+              "$ref": "#/$defs/H"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "role": {
+              "type": "string",
+              "const": "user"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "itemRefs": {
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ItemInput"
+              }
+            },
+            "locationRef": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "entryId",
+            "request",
+            "role",
+            "text",
+            "itemRefs",
+            "locationRef"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "entryId": {
+              "$ref": "#/$defs/H"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "role": {
+              "type": "string",
+              "const": "assistant"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 65536
+            },
+            "itemRefs": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/VerifiedItem"
+              }
+            },
+            "locationRef": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VerifiedLocation"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "locations": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapLocation"
+              }
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GamePlan"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "entryId",
+            "request",
+            "role",
+            "text",
+            "itemRefs",
+            "locationRef"
+          ]
+        }
+      ]
+    },
+    "ID": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "Identity": {
+      "type": "object",
+      "properties": {
+        "serverNamespace": {
+          "$ref": "#/$defs/S"
+        },
+        "realm": {
+          "$ref": "#/$defs/S"
+        },
+        "playerGuid": {
+          "$ref": "#/$defs/S"
+        },
+        "displayName": {
+          "$ref": "#/$defs/S"
+        }
+      },
+      "required": [
+        "serverNamespace",
+        "realm",
+        "playerGuid",
+        "displayName"
+      ]
+    },
+    "InboxPacket": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "publicationRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "targetCharacterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "targetDeliverySessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "acceptedMessageKeys": {
+          "maxItems": 128,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MessageKey"
+          }
+        },
+        "deliveries": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Delivery"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "publicationRevision",
+        "targetCharacterKey",
+        "targetDeliverySessionId",
+        "acceptedMessageKeys",
+        "deliveries"
+      ]
+    },
+    "IpcRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "find_services"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "service": {
+                  "type": "string",
+                  "enum": [
+                    "auctioneer",
+                    "mailbox",
+                    "banker",
+                    "innkeeper",
+                    "flight_master",
+                    "vendor",
+                    "trainer",
+                    "repair",
+                    "stable_master"
+                  ]
+                },
+                "itemId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ID"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "zoneName": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/S"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "forCharacter": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/S"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "profession": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/S"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "classToken": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/S"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/H"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "service",
+                "itemId",
+                "zoneName",
+                "forCharacter",
+                "profession",
+                "classToken",
+                "cursor"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "search_game_data"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "$ref": "#/$defs/S"
+                },
+                "types": {
+                  "maxItems": 15,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/SearchType"
+                  }
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/H"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "query",
+                "types",
+                "cursor"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_game_record"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "$ref": "#/$defs/SearchType"
+                },
+                "id": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ID"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recordKey": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/S"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fields": {
+                  "maxItems": 40,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/S"
+                  }
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "recordKey",
+                "fields"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_source_status"
+            },
+            "args": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "calculate_craft"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "recipeRefId": {
+                  "$ref": "#/$defs/H"
+                },
+                "desiredQuantity": {
+                  "$ref": "#/$defs/ID"
+                },
+                "inventoryScope": {
+                  "type": "string",
+                  "enum": [
+                    "bags",
+                    "account",
+                    "none"
+                  ]
+                }
+              },
+              "required": [
+                "recipeRefId",
+                "desiredQuantity",
+                "inventoryScope"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "lookup_prices"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "items": {
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ItemInput"
+                  }
+                }
+              },
+              "required": [
+                "items"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "lookup_items"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "items": {
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ItemInput"
+                  }
+                }
+              },
+              "required": [
+                "items"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_alts"
+            },
+            "args": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "find_items_on_alts"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "itemIds": {
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ID"
+                  }
+                }
+              },
+              "required": [
+                "itemIds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "find_recipe_crafters"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "recipeSpellIds": {
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ID"
+                  }
+                }
+              },
+              "required": [
+                "recipeSpellIds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "callId": {
+              "$ref": "#/$defs/H"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/H"
+            },
+            "tool": {
+              "type": "string",
+              "const": "plan_craft"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "recipeRefId": {
+                  "$ref": "#/$defs/H"
+                },
+                "desiredQuantity": {
+                  "$ref": "#/$defs/ID"
+                },
+                "inventoryScope": {
+                  "type": "string",
+                  "enum": [
+                    "bags",
+                    "account",
+                    "none"
+                  ]
+                },
+                "maxDepth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "lookupPrices": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "recipeRefId",
+                "desiredQuantity",
+                "inventoryScope",
+                "maxDepth",
+                "lookupPrices"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "version",
+            "token",
+            "callId",
+            "attemptId",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "IpcResult": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "callId": {
+          "$ref": "#/$defs/H"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "not_found",
+            "source_unavailable",
+            "unsupported_format",
+            "limit",
+            "cancelled",
+            "error"
+          ]
+        },
+        "data": {},
+        "evidenceIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "limitations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/H"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "callId",
+        "status",
+        "data",
+        "evidenceIds",
+        "limitations",
+        "cursor"
+      ]
+    },
+    "ItemInput": {
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "itemLink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "itemId",
+        "itemLink"
+      ]
+    },
+    "MapLocation": {
+      "type": "object",
+      "properties": {
+        "locationRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifiedLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approxLocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApproxLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "locationRef",
+        "approxLocation"
+      ]
+    },
+    "Message": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/HelloMessage"
+        },
+        {
+          "$ref": "#/$defs/QueryMessage"
+        },
+        {
+          "$ref": "#/$defs/CancelMessage"
+        },
+        {
+          "$ref": "#/$defs/PriceResultMessage"
+        },
+        {
+          "$ref": "#/$defs/ReceiptsMessage"
+        },
+        {
+          "$ref": "#/$defs/PolicyMessage"
+        },
+        {
+          "$ref": "#/$defs/ClearHistoryMessage"
+        }
+      ]
+    },
+    "MessageKey": {
+      "type": "object",
+      "properties": {
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        }
+      },
+      "required": [
+        "originSessionId",
+        "messageSequence"
+      ]
+    },
+    "N": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "PlanStepKind": {
+      "type": "string",
+      "enum": [
+        "get",
+        "craft",
+        "learn",
+        "mail",
+        "collect",
+        "login",
+        "goto",
+        "do"
+      ]
+    },
+    "Policy": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/U32"
+        },
+        "resetEpoch": {
+          "$ref": "#/$defs/N"
+        },
+        "enabledGroups": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GroupName"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "resetEpoch",
+        "enabledGroups"
+      ]
+    },
+    "PolicyBody": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/Identity"
+        },
+        "policy": {
+          "$ref": "#/$defs/Policy"
+        }
+      },
+      "required": [
+        "identity",
+        "policy"
+      ]
+    },
+    "PolicyMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "POLICY"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/PolicyBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "PositionGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PositionGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "PositionGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "type": "object",
+          "properties": {
+            "mapKey": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/S"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "x": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "y": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "zoneName": {
+              "$ref": "#/$defs/S0"
+            }
+          },
+          "required": [
+            "mapKey",
+            "x",
+            "y",
+            "zoneName"
+          ]
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "PriceLookupDeliveryBody": {
+      "type": "object",
+      "properties": {
+        "lookupId": {
+          "$ref": "#/$defs/H"
+        },
+        "items": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ItemInput"
+          }
+        },
+        "itemInfo": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "lookupId",
+        "items"
+      ]
+    },
+    "PriceObservation": {
+      "type": "object",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/ItemInput"
+        },
+        "marketKey": {
+          "$ref": "#/$defs/S"
+        },
+        "unit": {
+          "type": "string",
+          "const": "per_item"
+        },
+        "priceCopper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readOriginSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "readAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "sourceObservedAtMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ageDays": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agePrecision": {
+          "type": "string",
+          "enum": [
+            "day_bucket",
+            "unknown"
+          ]
+        },
+        "rawExactness": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "exactness": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "fallback",
+            "unknown"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "const": "auctionator_v1"
+        },
+        "sourceVersion": {
+          "$ref": "#/$defs/S"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PriceUnavailableReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "marketKey",
+        "unit",
+        "priceCopper",
+        "readOriginSessionId",
+        "readAtSessionMs",
+        "sourceObservedAtMs",
+        "ageDays",
+        "agePrecision",
+        "rawExactness",
+        "exactness",
+        "source",
+        "sourceVersion",
+        "unavailableReason"
+      ]
+    },
+    "PriceResultBody": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/RequestKey"
+        },
+        "lookupId": {
+          "$ref": "#/$defs/H"
+        },
+        "observations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PriceObservation"
+          }
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PriceUnavailableReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "itemInfo": {
+          "default": [],
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClientItemInfo"
+          }
+        }
+      },
+      "required": [
+        "request",
+        "lookupId",
+        "observations",
+        "unavailableReason"
+      ]
+    },
+    "PriceResultMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "PRICE_RESULT"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/PriceResultBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "PriceUnavailableReason": {
+      "type": "string",
+      "enum": [
+        "api_unavailable",
+        "call_error",
+        "not_ready",
+        "no_price",
+        "price_lookup_timeout"
+      ]
+    },
+    "PricesGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PricesGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "PricesGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "maxItems": 4096,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PriceObservation"
+          }
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "ProfessionsGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ProfessionsGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "ProfessionsGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "skillId": {
+                "$ref": "#/$defs/ID"
+              },
+              "name": {
+                "$ref": "#/$defs/S"
+              },
+              "rank": {
+                "$ref": "#/$defs/N"
+              },
+              "maxRank": {
+                "$ref": "#/$defs/N"
+              },
+              "knownRecipeSpellIds": {
+                "anyOf": [
+                  {
+                    "maxItems": 4096,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/ID"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "skillId",
+              "name",
+              "rank",
+              "maxRank",
+              "knownRecipeSpellIds"
+            ]
+          }
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "QueryBody": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/Identity"
+        },
+        "conversationId": {
+          "$ref": "#/$defs/H"
+        },
+        "policy": {
+          "$ref": "#/$defs/Policy"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        },
+        "itemRefs": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ItemInput"
+          }
+        },
+        "snapshot": {
+          "$ref": "#/$defs/Snapshot"
+        },
+        "activePlan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActivePlanRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "identity",
+        "conversationId",
+        "policy",
+        "text",
+        "itemRefs",
+        "snapshot"
+      ]
+    },
+    "QueryMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "QUERY"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/QueryBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "QuestsGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/QuestsGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "QuestsGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "maxItems": 4096,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "questId": {
+                "$ref": "#/$defs/ID"
+              },
+              "title": {
+                "$ref": "#/$defs/S0"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "complete",
+                  "failed",
+                  "unknown"
+                ]
+              },
+              "objectives": {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "$ref": "#/$defs/ID"
+                    },
+                    "text": {
+                      "$ref": "#/$defs/S0"
+                    },
+                    "have": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/N"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "need": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/N"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "complete": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "text",
+                    "have",
+                    "need",
+                    "complete"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "questId",
+              "title",
+              "state",
+              "objectives"
+            ]
+          }
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "ReceiptsBody": {
+      "type": "object",
+      "properties": {
+        "deliveryIds": {
+          "minItems": 1,
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        }
+      },
+      "required": [
+        "deliveryIds"
+      ]
+    },
+    "ReceiptsMessage": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "type": {
+          "type": "string",
+          "const": "RECEIPTS"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "messageSequence": {
+          "$ref": "#/$defs/U32"
+        },
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "body": {
+          "$ref": "#/$defs/ReceiptsBody"
+        }
+      },
+      "required": [
+        "version",
+        "type",
+        "originSessionId",
+        "messageSequence",
+        "characterKey",
+        "body"
+      ]
+    },
+    "ReplyStatus": {
+      "type": "string",
+      "enum": [
+        "answer",
+        "partial",
+        "needs_data",
+        "error"
+      ]
+    },
+    "RequestKey": {
+      "type": "object",
+      "properties": {
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "requestId": {
+          "$ref": "#/$defs/U32"
+        }
+      },
+      "required": [
+        "characterKey",
+        "originSessionId",
+        "requestId"
+      ]
+    },
+    "S": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "S0": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 1024
+    },
+    "SearchType": {
+      "type": "string",
+      "enum": [
+        "item",
+        "recipe",
+        "npc",
+        "quest",
+        "object",
+        "pack",
+        "dungeons",
+        "journal",
+        "leveling",
+        "professions",
+        "training",
+        "talents",
+        "bis",
+        "rewards",
+        "prices"
+      ]
+    },
+    "Snapshot": {
+      "type": "object",
+      "properties": {
+        "snapshotId": {
+          "$ref": "#/$defs/U32"
+        },
+        "capturedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "groups": {
+          "$ref": "#/$defs/SnapshotGroups"
+        }
+      },
+      "required": [
+        "snapshotId",
+        "capturedAtSessionMs",
+        "groups"
+      ]
+    },
+    "SnapshotGroups": {
+      "type": "object",
+      "properties": {
+        "character": {
+          "$ref": "#/$defs/CharacterGroup"
+        },
+        "equipment": {
+          "$ref": "#/$defs/EquipmentGroup"
+        },
+        "quests": {
+          "$ref": "#/$defs/QuestsGroup"
+        },
+        "talents": {
+          "$ref": "#/$defs/TalentsGroup"
+        },
+        "position": {
+          "$ref": "#/$defs/PositionGroup"
+        },
+        "bags": {
+          "$ref": "#/$defs/BagsGroup"
+        },
+        "professions": {
+          "$ref": "#/$defs/ProfessionsGroup"
+        },
+        "prices": {
+          "$ref": "#/$defs/PricesGroup"
+        }
+      },
+      "required": [
+        "character",
+        "equipment",
+        "quests",
+        "talents",
+        "position",
+        "bags",
+        "professions",
+        "prices"
+      ]
+    },
+    "StatusDeliveryBody": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "running",
+            "cancelled",
+            "failed"
+          ]
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "errorCode"
+      ]
+    },
+    "TalentsGroup": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TalentsGroupAvailable"
+        },
+        {
+          "$ref": "#/$defs/GroupUnavailable"
+        },
+        {
+          "$ref": "#/$defs/GroupDisabled"
+        }
+      ]
+    },
+    "TalentsGroupAvailable": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "type": "string",
+          "const": "available"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "observedAtSessionMs": {
+          "$ref": "#/$defs/N"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "api_unavailable",
+                "not_ready",
+                "partial_limit"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "maxItems": 4096,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tab": {
+                "$ref": "#/$defs/ID"
+              },
+              "index": {
+                "$ref": "#/$defs/ID"
+              },
+              "spellId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ID"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "rank": {
+                "$ref": "#/$defs/N"
+              },
+              "maxRank": {
+                "$ref": "#/$defs/N"
+              }
+            },
+            "required": [
+              "tab",
+              "index",
+              "spellId",
+              "rank",
+              "maxRank"
+            ]
+          }
+        }
+      },
+      "required": [
+        "availability",
+        "coverage",
+        "observedAtSessionMs",
+        "reason",
+        "value"
+      ]
+    },
+    "U32": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "VerifiedItem": {
+      "type": "object",
+      "properties": {
+        "refId": {
+          "$ref": "#/$defs/H"
+        },
+        "itemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "itemLink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidenceIds": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        }
+      },
+      "required": [
+        "refId",
+        "itemId",
+        "itemLink",
+        "evidenceIds"
+      ]
+    },
+    "VerifiedLocation": {
+      "type": "object",
+      "properties": {
+        "refId": {
+          "$ref": "#/$defs/H"
+        },
+        "entityKind": {
+          "type": "string",
+          "enum": [
+            "npc",
+            "quest",
+            "dungeon",
+            "other"
+          ]
+        },
+        "entityId": {
+          "$ref": "#/$defs/S"
+        },
+        "title": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mapKey": {
+          "$ref": "#/$defs/S"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidenceIds": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        }
+      },
+      "required": [
+        "refId",
+        "entityKind",
+        "entityId",
+        "mapKey",
+        "x",
+        "y",
+        "evidenceIds"
+      ]
+    }
+  }
+}

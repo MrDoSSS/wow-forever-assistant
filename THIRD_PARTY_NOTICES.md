@@ -1,0 +1,37 @@
+# Third-party notices
+
+WoW Forever Assistant uses the components below. Versions are pinned in `package.json` and `bun.lock`.
+
+## Bridge runtime dependencies
+
+| Component | Version | License | Source |
+|---|---|---|---|
+| zod | 4.6.7 | MIT | https://github.com/colinhacks/zod |
+| yauzl | 3.4.0 | MIT | https://github.com/thejoshwolfe/yauzl |
+| pend (yauzl dependency) | 1.2.0 | MIT | https://github.com/andrewrk/node-pend |
+| luaparse | 0.3.1 | MIT | https://github.com/fstirlitz/luaparse |
+| @modelcontextprotocol/server | 2.4.0 | Apache-2.0 | https://github.com/modelcontextprotocol/typescript-sdk |
+| @modelcontextprotocol/core | 2.4.0 | Apache-2.0 | https://github.com/modelcontextprotocol/typescript-sdk |
+
+The full license texts are in each package's folder under `node_modules` after `bun install`.
+
+## Bundled addon font
+
+**Noto Sans Regular**, Copyright 2018 The Noto Project Authors, is distributed unmodified under the SIL Open Font License 1.1. It is used for player text, conversation titles and replies, including Cyrillic in English game clients. The font and full license are in `addon/ForeverAssistant/Fonts/`. Source: https://github.com/notofonts/noto-fonts/blob/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf. SHA-256: `b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5`.
+
+## Development only (not needed to run the bridge)
+
+| Component | Version | License | Use |
+|---|---|---|---|
+| TypeScript | 7.0.2 | Apache-2.0 | compiler |
+| fengari | 0.1.5 | MIT | runs the Lua addon in tests |
+| @types/bun, bun-types, @types/node, @types/yauzl, @types/luaparse | see `package.json` | MIT | type definitions |
+
+## External programs and game addons
+
+None of these are bundled or redistributed; the assistant talks to them at runtime.
+
+- **Codex CLI** (OpenAI) — installed by the user; the bridge starts it as a separate process with the user's own subscription.
+- **Auctionator** — the addon calls only its public `Auctionator.API.v1` functions in the game client. No Auctionator code is copied.
+- **ForeverMaster** (https://foreverchanges.pro) — the bridge downloads the current archive at runtime and reads its data files statically; Lua from the archive is never executed. The addon and its compiled database are not included in this repository. Offline tests and diagnostics generate synthetic format samples in memory; these are not a snapshot of the author's database and do not verify current game facts.
+- **World of Warcraft** — the addon uses the documented client API. World of Warcraft is a trademark of Blizzard Entertainment, Inc.; this project is not affiliated with Blizzard.

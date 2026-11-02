@@ -1,0 +1,15 @@
+node_modules/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.partial
+logs/
+run/
+.env
+*.tmp
+
+.DS_Store
+
+# Downloaded third-party addons are runtime data, not test fixtures.
+fixtures/forevermaster/*.zip
+ForeverMaster*.zip

@@ -1,0 +1,437 @@
+{
+  "description": "Minimal v1 contract examples. Each invalid variant changes one field.",
+  "cases": [
+    {
+      "name": "hello",
+      "schema": "Message",
+      "value": {
+        "version": 1,
+        "type": "HELLO",
+        "originSessionId": "0123456789abcdef0123456789abcdef",
+        "messageSequence": 1,
+        "characterKey": "e34d13dffc01544d77f97fba9aa19e367e21541bb9c9315863dbc72035d37da0",
+        "body": {
+          "identity": {
+            "serverNamespace": "forever-test",
+            "realm": "Forever",
+            "playerGuid": "Player-1-00000001",
+            "displayName": "Tester"
+          },
+          "deliverySessionId": "0123456789abcdef0123456789abcdef",
+          "conversationId": "fedcba9876543210fedcba9876543210",
+          "policy": {
+            "revision": 1,
+            "resetEpoch": 0,
+            "enabledGroups": []
+          },
+          "pendingRequests": [],
+          "appliedDeliveryIds": [],
+          "historyCursor": null
+        }
+      },
+      "negatives": [
+        {
+          "name": "bad characterKey hash",
+          "path": [
+            "characterKey"
+          ],
+          "value": "XYZ"
+        },
+        {
+          "name": "empty GUID",
+          "path": [
+            "body",
+            "identity",
+            "playerGuid"
+          ],
+          "value": ""
+        },
+        {
+          "name": "deliverySessionId differs from origin",
+          "path": [
+            "body",
+            "deliverySessionId"
+          ],
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "russian query with all groups disabled",
+      "schema": "Message",
+      "value": {
+        "version": 1,
+        "type": "QUERY",
+        "originSessionId": "0123456789abcdef0123456789abcdef",
+        "messageSequence": 2,
+        "characterKey": "e34d13dffc01544d77f97fba9aa19e367e21541bb9c9315863dbc72035d37da0",
+        "body": {
+          "identity": {
+            "serverNamespace": "forever-test",
+            "realm": "Forever",
+            "playerGuid": "Player-1-00000001",
+            "displayName": "Tester"
+          },
+          "conversationId": "fedcba9876543210fedcba9876543210",
+          "policy": {
+            "revision": 1,
+            "resetEpoch": 0,
+            "enabledGroups": []
+          },
+          "text": "Which staff is better for a level twelve mage?",
+          "itemRefs": [],
+          "snapshot": {
+            "snapshotId": 2,
+            "capturedAtSessionMs": 61000,
+            "groups": {
+              "character": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "equipment": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "quests": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "talents": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "position": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "bags": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "professions": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              },
+              "prices": {
+                "availability": "disabled",
+                "coverage": "unknown",
+                "observedAtSessionMs": null,
+                "reason": "user_disabled",
+                "value": null
+              }
+            }
+          }
+        }
+      },
+      "negatives": [
+        {
+          "name": "missing group",
+          "path": [
+            "body",
+            "snapshot",
+            "groups",
+            "bags"
+          ],
+          "remove": true
+        },
+        {
+          "name": "disabled group with value",
+          "path": [
+            "body",
+            "snapshot",
+            "groups",
+            "quests",
+            "value"
+          ],
+          "value": []
+        },
+        {
+          "name": "snapshotId differs from sequence",
+          "path": [
+            "body",
+            "snapshot",
+            "snapshotId"
+          ],
+          "value": 3
+        },
+        {
+          "name": "empty text",
+          "path": [
+            "body",
+            "text"
+          ],
+          "value": ""
+        }
+      ]
+    },
+    {
+      "name": "cancel",
+      "schema": "Message",
+      "value": {
+        "version": 1,
+        "type": "CANCEL",
+        "originSessionId": "0123456789abcdef0123456789abcdef",
+        "messageSequence": 3,
+        "characterKey": "e34d13dffc01544d77f97fba9aa19e367e21541bb9c9315863dbc72035d37da0",
+        "body": {
+          "request": {
+            "characterKey": "e34d13dffc01544d77f97fba9aa19e367e21541bb9c9315863dbc72035d37da0",
+            "originSessionId": "0123456789abcdef0123456789abcdef",
+            "requestId": 2
+          }
+        }
+      },
+      "negatives": [
+        {
+          "name": "foreign RequestKey",
+          "path": [
+            "body",
+            "request",
+            "characterKey"
+          ],
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "bags with count 2",
+      "schema": "BagsGroup",
+      "value": {
+        "availability": "available",
+        "coverage": "partial",
+        "observedAtSessionMs": 61000,
+        "reason": "not_ready",
+        "value": [
+          {
+            "bag": 0,
+            "slot": 1,
+            "item": {
+              "itemId": 118,
+              "itemLink": "|cffffffff|Hitem:118::::::::12:::::::|h[Minor Healing Potion]|h|r"
+            },
+            "count": 2
+          }
+        ]
+      },
+      "negatives": [
+        {
+          "name": "string count",
+          "path": [
+            "value",
+            0,
+            "count"
+          ],
+          "value": "2"
+        },
+        {
+          "name": "item link of another item",
+          "path": [
+            "value",
+            0,
+            "item",
+            "itemId"
+          ],
+          "value": 119
+        },
+        {
+          "name": "partial without reason",
+          "path": [
+            "reason"
+          ],
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "talent rank",
+      "schema": "TalentsGroup",
+      "value": {
+        "availability": "available",
+        "coverage": "complete",
+        "observedAtSessionMs": 61000,
+        "reason": null,
+        "value": [
+          {
+            "tab": 1,
+            "index": 3,
+            "spellId": 11070,
+            "rank": 2,
+            "maxRank": 5
+          }
+        ]
+      },
+      "negatives": [
+        {
+          "name": "rank above maxRank",
+          "path": [
+            "value",
+            0,
+            "rank"
+          ],
+          "value": 6
+        }
+      ]
+    },
+    {
+      "name": "price without age",
+      "schema": "PriceObservation",
+      "value": {
+        "item": {
+          "itemId": 4470,
+          "itemLink": null
+        },
+        "marketKey": "forever:Forever:alliance",
+        "unit": "per_item",
+        "priceCopper": 38,
+        "readOriginSessionId": "0123456789abcdef0123456789abcdef",
+        "readAtSessionMs": 62000,
+        "sourceObservedAtMs": null,
+        "ageDays": null,
+        "agePrecision": "unknown",
+        "rawExactness": null,
+        "exactness": "unknown",
+        "source": "auctionator_v1",
+        "sourceVersion": "341",
+        "unavailableReason": null
+      },
+      "negatives": [
+        {
+          "name": "string price",
+          "path": [
+            "priceCopper"
+          ],
+          "value": "38"
+        },
+        {
+          "name": "null price without reason",
+          "path": [
+            "priceCopper"
+          ],
+          "value": null
+        },
+        {
+          "name": "day bucket without ageDays",
+          "path": [
+            "agePrecision"
+          ],
+          "value": "day_bucket"
+        }
+      ]
+    },
+    {
+      "name": "reply with empty refs and null points",
+      "schema": "ModelReply",
+      "value": {
+        "status": "answer",
+        "text": "The apprentice staff should work until level 15.",
+        "itemRefIds": [],
+        "evidenceIds": [],
+        "locationRefId": null,
+        "approxLocation": null,
+        "calculationIds": [],
+        "limitations": [],
+        "clarification": null
+      },
+      "negatives": [
+        {
+          "name": "extra field in strict reply",
+          "path": [
+            "comment"
+          ],
+          "value": "extra"
+        },
+        {
+          "name": "clarification on answer",
+          "path": [
+            "clarification"
+          ],
+          "value": "Please clarify"
+        }
+      ]
+    },
+    {
+      "name": "approx location",
+      "schema": "ModelReply",
+      "value": {
+        "status": "answer",
+        "text": "The trainer stands at the abbey entrance.",
+        "itemRefIds": [],
+        "evidenceIds": [],
+        "locationRefId": null,
+        "approxLocation": {
+          "title": "Marshal Dughan",
+          "zoneName": "Elwynn Forest",
+          "x": 48.2,
+          "y": 41.9,
+          "basis": "Coordinates from a guide page",
+          "sourceUrl": "https://example.org/guide"
+        },
+        "calculationIds": [],
+        "limitations": [],
+        "clarification": null
+      },
+      "negatives": [
+        {
+          "name": "x=101",
+          "path": [
+            "approxLocation",
+            "x"
+          ],
+          "value": 101
+        },
+        {
+          "name": "both location kinds",
+          "path": [
+            "locationRefId"
+          ],
+          "value": "abcdefabcdefabcdefabcdefabcdefab"
+        }
+      ]
+    },
+    {
+      "name": "needs_data with clarification",
+      "schema": "ModelReply",
+      "value": {
+        "status": "needs_data",
+        "text": "Your profession is needed.",
+        "itemRefIds": [],
+        "evidenceIds": [],
+        "locationRefId": null,
+        "approxLocation": null,
+        "calculationIds": [],
+        "limitations": [],
+        "clarification": "What profession does the character have?"
+      },
+      "negatives": [
+        {
+          "name": "needs_data without clarification",
+          "path": [
+            "clarification"
+          ],
+          "value": null
+        }
+      ]
+    }
+  ]
+}

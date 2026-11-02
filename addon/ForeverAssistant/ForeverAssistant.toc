@@ -1,0 +1,29 @@
+## Interface: 16001
+## Title: ForeverAssistant
+## Notes: WoW Forever assistant: ask about your character and the world through a local bridge.
+## Version: 0.4.6
+## SavedVariables: ForeverAssistantDB
+## OptionalDeps: Auctionator
+## X-ForeverAssistant-Kit: 1
+Config.lua
+Core.lua
+Bit.lua
+Json.lua
+Sha256.lua
+Transport\Codec.lua
+Transport\Outbound.lua
+Transport\Inbound.lua
+Collectors\Context.lua
+Collectors\Alts.lua
+Integrations\Auctionator.lua
+Integrations\ItemInfo.lua
+Map.lua
+UI\Items.lua
+UI\Wrap.lua
+Assistant.lua
+Plan.lua
+UI\Theme.lua
+UI\Settings.lua
+UI\Chat.lua
+UI\PlanWindow.lua
+Inbox.lua

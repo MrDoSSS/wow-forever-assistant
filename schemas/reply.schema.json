@@ -1,0 +1,981 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forever-assistant.local/schemas/reply.schema.json",
+  "title": "Forever Assistant v1: reply",
+  "roots": [
+    "ModelReply",
+    "GameReply",
+    "HistoryEntry"
+  ],
+  "$defs": {
+    "ApproxLocation": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "zoneName": {
+          "$ref": "#/$defs/S"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "basis": {
+          "$ref": "#/$defs/S"
+        },
+        "sourceUrl": {
+          "$ref": "#/$defs/S"
+        }
+      },
+      "required": [
+        "zoneName",
+        "x",
+        "y",
+        "basis",
+        "sourceUrl"
+      ],
+      "additionalProperties": false
+    },
+    "CharacterKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "GamePlan": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "steps": {
+          "minItems": 1,
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GamePlanStep"
+          }
+        },
+        "revises": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "steps"
+      ]
+    },
+    "GamePlanStep": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PlanStepKind"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "character": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "item": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifiedItem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mailTo": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moneyCopper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/N"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recipeSpellId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mailFrom": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skillId": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skillRank": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 450
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "character",
+        "item",
+        "quantity",
+        "location",
+        "mailTo",
+        "moneyCopper",
+        "recipeSpellId"
+      ]
+    },
+    "GameReply": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ReplyStatus"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "itemRefs": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerifiedItem"
+          }
+        },
+        "evidenceIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "locationRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifiedLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approxLocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApproxLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "locations": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MapLocation"
+          }
+        },
+        "calculationIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "limitations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        },
+        "clarification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GamePlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "text",
+        "itemRefs",
+        "evidenceIds",
+        "locationRef",
+        "approxLocation",
+        "calculationIds",
+        "limitations",
+        "clarification"
+      ]
+    },
+    "H": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "HistoryEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "entryId": {
+              "$ref": "#/$defs/H"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "role": {
+              "type": "string",
+              "const": "user"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "itemRefs": {
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ItemInput"
+              }
+            },
+            "locationRef": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "entryId",
+            "request",
+            "role",
+            "text",
+            "itemRefs",
+            "locationRef"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "entryId": {
+              "$ref": "#/$defs/H"
+            },
+            "request": {
+              "$ref": "#/$defs/RequestKey"
+            },
+            "role": {
+              "type": "string",
+              "const": "assistant"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 65536
+            },
+            "itemRefs": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/VerifiedItem"
+              }
+            },
+            "locationRef": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VerifiedLocation"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "locations": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapLocation"
+              }
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GamePlan"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "entryId",
+            "request",
+            "role",
+            "text",
+            "itemRefs",
+            "locationRef"
+          ]
+        }
+      ]
+    },
+    "ID": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "ItemInput": {
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "itemLink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "itemId",
+        "itemLink"
+      ]
+    },
+    "MapLocation": {
+      "type": "object",
+      "properties": {
+        "locationRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifiedLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approxLocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApproxLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "locationRef",
+        "approxLocation"
+      ]
+    },
+    "ModelReply": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/ReplyStatus"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "itemRefIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "evidenceIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "locationRefId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/H"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approxLocation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "$ref": "#/$defs/S"
+                },
+                "zoneName": {
+                  "$ref": "#/$defs/S"
+                },
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "basis": {
+                  "$ref": "#/$defs/S"
+                },
+                "sourceUrl": {
+                  "$ref": "#/$defs/S"
+                }
+              },
+              "required": [
+                "title",
+                "zoneName",
+                "x",
+                "y",
+                "basis",
+                "sourceUrl"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "locations": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "locationRefId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/H"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "approxLocation": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "$ref": "#/$defs/S"
+                      },
+                      "zoneName": {
+                        "$ref": "#/$defs/S"
+                      },
+                      "x": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "y": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "basis": {
+                        "$ref": "#/$defs/S"
+                      },
+                      "sourceUrl": {
+                        "$ref": "#/$defs/S"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "zoneName",
+                      "x",
+                      "y",
+                      "basis",
+                      "sourceUrl"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "locationRefId",
+              "approxLocation"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "calculationIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        },
+        "limitations": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/S"
+          }
+        },
+        "clarification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "steps": {
+                  "minItems": 1,
+                  "maxItems": 30,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "$ref": "#/$defs/PlanStepKind"
+                      },
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "character": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/S"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "itemRefId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/H"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "quantity": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 1000000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "location": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 20
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "mailTo": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/S"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "mailFrom": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/S"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "moneyCopper": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/N"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "recipeSpellId": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/ID"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "profession": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/S"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "skillRank": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 450
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "text",
+                      "character",
+                      "itemRefId",
+                      "quantity",
+                      "location",
+                      "mailTo",
+                      "mailFrom",
+                      "moneyCopper",
+                      "recipeSpellId",
+                      "profession",
+                      "skillRank"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "revisesActivePlan": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "title",
+                "steps",
+                "revisesActivePlan"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "text",
+        "itemRefIds",
+        "evidenceIds",
+        "locationRefId",
+        "approxLocation",
+        "calculationIds",
+        "limitations",
+        "clarification"
+      ],
+      "additionalProperties": false
+    },
+    "N": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "PlanStepKind": {
+      "type": "string",
+      "enum": [
+        "get",
+        "craft",
+        "learn",
+        "mail",
+        "collect",
+        "login",
+        "goto",
+        "do"
+      ]
+    },
+    "ReplyStatus": {
+      "type": "string",
+      "enum": [
+        "answer",
+        "partial",
+        "needs_data",
+        "error"
+      ]
+    },
+    "RequestKey": {
+      "type": "object",
+      "properties": {
+        "characterKey": {
+          "$ref": "#/$defs/CharacterKey"
+        },
+        "originSessionId": {
+          "$ref": "#/$defs/H"
+        },
+        "requestId": {
+          "$ref": "#/$defs/U32"
+        }
+      },
+      "required": [
+        "characterKey",
+        "originSessionId",
+        "requestId"
+      ]
+    },
+    "S": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "U32": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "VerifiedItem": {
+      "type": "object",
+      "properties": {
+        "refId": {
+          "$ref": "#/$defs/H"
+        },
+        "itemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "itemLink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidenceIds": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        }
+      },
+      "required": [
+        "refId",
+        "itemId",
+        "itemLink",
+        "evidenceIds"
+      ]
+    },
+    "VerifiedLocation": {
+      "type": "object",
+      "properties": {
+        "refId": {
+          "$ref": "#/$defs/H"
+        },
+        "entityKind": {
+          "type": "string",
+          "enum": [
+            "npc",
+            "quest",
+            "dungeon",
+            "other"
+          ]
+        },
+        "entityId": {
+          "$ref": "#/$defs/S"
+        },
+        "title": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mapKey": {
+          "$ref": "#/$defs/S"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidenceIds": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/H"
+          }
+        }
+      },
+      "required": [
+        "refId",
+        "entityKind",
+        "entityId",
+        "mapKey",
+        "x",
+        "y",
+        "evidenceIds"
+      ]
+    }
+  }
+}

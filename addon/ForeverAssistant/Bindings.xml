@@ -1,0 +1,5 @@
+<Bindings>
+  <Binding name="FOREVERASSISTANT_TOGGLE" header="FOREVERASSISTANT" category="ADDONS">
+    ForeverAssistant_Toggle()
+  </Binding>
+</Bindings>

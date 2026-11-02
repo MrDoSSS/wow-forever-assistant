@@ -1,0 +1,34 @@
+{
+  "name": "wow-forever-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local WoW Forever assistant: Lua addon and Bun bridge",
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "bun": ">=1.4.4 <2"
+  },
+  "scripts": {
+    "typecheck": "bun node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "bun run typecheck && bun tools/generate-schemas.ts --check && bun test",
+    "schemas:generate": "bun tools/generate-schemas.ts",
+    "schemas:check": "bun tools/generate-schemas.ts --check",
+    "start": "bun bridge/src/main.ts",
+    "install:addon": "bun tools/install.ts",
+    "diagnose": "bun tools/diagnose.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "luaparse": "0.3.1",
+    "yauzl": "3.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "@types/luaparse": "0.2.13",
+    "@types/node": "24.19.2",
+    "@types/yauzl": "3.4.0",
+    "fengari": "0.1.5",
+    "typescript": "7.0.2"
+  }
+}
