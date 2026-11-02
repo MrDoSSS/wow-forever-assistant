@@ -1,5 +1,4 @@
-// Bounded ForeverMaster ZIP reader: validate entries before extraction,
-// check actual sizes and CRC, and read only Data/*.lua and ForeverMaster.toc.
+// Bounded ZIP reader: validate paths, sizes and CRC before selecting static data.
 import { crc32 } from 'node:zlib';
 import yauzl, { type Entry, type ZipFile } from 'yauzl';
 
@@ -33,17 +32,6 @@ export class ArchiveError extends Error {
     this.name = 'ArchiveError';
   }
 }
-
-export interface ArchiveContents {
-  /** Data filename (Recipes.lua) -> bytes. */
-  dataFiles: Map<string, Uint8Array>;
-  toc: Uint8Array;
-  entryCount: number;
-}
-
-const ROOT = 'ForeverMaster/';
-const DATA_FILE = /^ForeverMaster\/Data\/([A-Za-z0-9_]+\.lua)$/;
-const TOC = 'ForeverMaster/ForeverMaster.toc';
 
 function checkPath(name: string): void {
   if (name.includes('\0') || name.includes('\\') || name.startsWith('/') || /^[A-Za-z]:/.test(name)) {
@@ -145,16 +133,4 @@ export async function readSelectedArchive(
   } finally {
     zip.close();
   }
-}
-
-export async function readArchive(archive: Uint8Array, limits: ArchiveLimits = { ...ARCHIVE_LIMITS }): Promise<ArchiveContents> {
-  const { files, entryCount } = await readSelectedArchive(archive, { root: ROOT, select: (name) => DATA_FILE.test(name) || name === TOC }, limits);
-  const toc = files.get(TOC);
-  if (!toc) throw new ArchiveError('missing_toc', 'ForeverMaster.toc is missing');
-  const dataFiles = new Map<string, Uint8Array>();
-  for (const [path, bytes] of files) {
-    const match = DATA_FILE.exec(path);
-    if (match) dataFiles.set(match[1]!, bytes);
-  }
-  return { dataFiles, toc, entryCount };
 }

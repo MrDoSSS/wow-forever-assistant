@@ -1,4 +1,4 @@
-// Source HTTP client for the ForeverMaster archive.
+// HTTP client for reference archives and manifests.
 // Not an arbitrary model page-reading tool. Allow 20 seconds per operation and at most
 // two attempts for temporary network errors; never retry 4xx or unknown formats.
 

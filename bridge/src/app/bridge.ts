@@ -17,7 +17,7 @@ export interface BridgeOptions {
   capabilities?: () => BridgeCapabilities;
   onCommitted?: (characterKey: string) => void;
   onPriceResult?: (lookupId: string) => void;
-  /** Current working ForeverMaster dataset to pin to a question. */
+  /** Current working reference dataset to pin to a question. */
   datasetId?: () => string | null;
   /** Verify that an interrupted attempt's process tree stopped (Codex). */
   confirmStop?: (attempt: { jobName: string; childPid: number | null; childCreatedAt: number | null }) => Promise<boolean>;

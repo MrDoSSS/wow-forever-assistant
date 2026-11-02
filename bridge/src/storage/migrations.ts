@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomId, sha256Hex } from '../ids.js';
 
 // schema.sql is the baseline. Register subsequent released changes here.
-export const BASELINE_VERSION = 4;
+export const BASELINE_VERSION = 5;
 export const MIGRATIONS: readonly { version: number; file: string }[] = [];
 export const SCHEMA_VERSION = BASELINE_VERSION + MIGRATIONS.length;
 

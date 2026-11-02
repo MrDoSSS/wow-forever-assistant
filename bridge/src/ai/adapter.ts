@@ -10,7 +10,7 @@ export interface AttemptInput {
   conversationId: string;
   query: QueryBody;
   modelSession: { generation: number; codexSessionId: string | null };
-  /** ForeverMaster dataset pinned to the question and its correction. */
+  /** Reference dataset pinned to the question and its correction. */
   datasetId: string | null;
   /** Second attempt: the first result's rejection reason. */
   correction: { reason: string } | null;

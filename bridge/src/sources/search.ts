@@ -1,15 +1,15 @@
-// One ranked search across immutable ForeverMaster and QuestieDB snapshots.
+// One ranked search across immutable ForeverDB and QuestieDB snapshots.
 // Group only by entity kind and ID; source records and conflicting text remain separate.
 import { DATASET_TYPES, type SearchType } from '../contracts.js';
-import type { DatasetType, TrainerRecord, RecipeRecord } from './forevermaster/decode.js';
-import { searchIndex, type MatchKind } from './forevermaster/search.js';
-import type { ForeverMasterSource } from './forevermaster/tools.js';
+import type { DatasetType, TrainerRecord, RecipeRecord } from './foreverdb/decode.js';
+import { searchIndex, type MatchKind } from './foreverdb/search.js';
+import { sourceKindOf, type ReferenceSource } from './records.js';
 import { ENTITY_TYPES, type EntityType } from './questiedb/decode.js';
 import type { QuestieSource } from './questiedb/tools.js';
 
 export const GAME_SEARCH_LIMITS = { results: 20, bytes: 20 * 1024, recordsPerHit: 8 };
 export interface SearchRecord {
-  source: 'forevermaster' | 'questiedb';
+  source: 'foreverdb' | 'questiedb';
   datasetId: string;
   /** Original source type/key for fetching details; not the unified search type. */
   type: DatasetType | EntityType;
@@ -31,7 +31,7 @@ export interface GameSearchPage {
   total: number;
   nextOffset: number | null;
   available: boolean;
-  sources: { forevermaster: string | null; questiedb: string | null };
+  sources: { foreverdb: string | null; questiedb: string | null };
   limitations: string[];
 }
 const RANK: Record<MatchKind, number> = { id: 0, name: 1, prefix: 2, substring: 3 };
@@ -40,14 +40,14 @@ const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const typeOf = (type: DatasetType): SearchType => type === 'items' || type === 'search' ? 'item' : type === 'recipes' ? 'recipe' : type === 'trainers' ? 'npc' : type;
 
 export function searchGameData(
-  master: ForeverMasterSource | null, questie: QuestieSource | null,
+  master: ReferenceSource | null, questie: QuestieSource | null,
   query: string, types: readonly SearchType[], offset = 0,
 ): GameSearchPage {
   const allowed = new Set(types);
   const masterTypes = DATASET_TYPES.filter((type) => !allowed.size || allowed.has(typeOf(type)));
   const questieTypes = ENTITY_TYPES.filter((type) => !allowed.size || allowed.has(type));
   const limitations: string[] = [];
-  if (masterTypes.length && !master) limitations.push('forevermaster_unavailable: results from this source are missing');
+  if (masterTypes.length && !master) limitations.push('foreverdb_unavailable: results from this source are missing');
   if (questieTypes.length && !questie) limitations.push('questiedb_unavailable: results from this source are missing');
   const groups = new Map<string, GameSearchHit>();
   const add = (type: SearchType, id: number | null, name: string, record: SearchRecord) => {
@@ -80,7 +80,7 @@ export function searchGameData(
         id = trainer?.npcId ?? null;
         name = trainer?.name ?? name;
       }
-      add(type, id, name, { source: 'forevermaster', datasetId: master.datasetId, type: hit.type, recordKey: hit.recordKey, text: hit.text.slice(0, 256), match: hit.match });
+      add(type, id, name, { source: sourceKindOf(master), datasetId: master.datasetId, type: hit.type, recordKey: hit.recordKey, text: hit.text.slice(0, 256), match: hit.match });
     }
   }
   if (questie && questieTypes.length) {
@@ -108,6 +108,6 @@ export function searchGameData(
   return {
     hits, total: ranked.length, nextOffset: position < ranked.length ? position : null,
     available: !!(master && masterTypes.length || questie && questieTypes.length),
-    sources: { forevermaster: master?.datasetId ?? null, questiedb: questie?.datasetId ?? null }, limitations,
+    sources: { foreverdb: master?.datasetId ?? null, questiedb: questie?.datasetId ?? null }, limitations,
   };
 }

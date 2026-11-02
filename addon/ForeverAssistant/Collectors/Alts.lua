@@ -181,7 +181,7 @@ local function spellFromLink(link)
   return tonumber(string.match(link, "enchant:(%d+)") or string.match(link, "spell:(%d+)"))
 end
 
--- New profession window API: recipeID is the spell ID, matching ForeverMaster.
+-- New profession window API: recipeID is the spell ID, matching the recipe reference.
 -- Do not save another character's window opened through a chat, guild or NPC link.
 local function scanModern()
   local T = C_TradeSkillUI

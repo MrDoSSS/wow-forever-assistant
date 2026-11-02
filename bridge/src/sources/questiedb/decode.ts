@@ -1,6 +1,6 @@
 import { inflateSync } from 'node:zlib';
 import luaparse from 'luaparse';
-import { parseSavedVariables } from '../forevermaster/parse.js';
+import { parseSavedVariables } from '../shared/lua.js';
 import { decodeCbor, objectOf, QuestieDataError, type DataValue } from './cbor.js';
 
 export const QUESTIE_DECODER_VERSION = 1;

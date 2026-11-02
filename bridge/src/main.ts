@@ -15,7 +15,7 @@ import { Bridge } from './app/bridge.js';
 import { systemClock } from './clock.js';
 import { dataPaths, defaultDataDir, loadConfig } from './config.js';
 import { JsonlDiagnostics } from './diagnostics.js';
-import { DatasetManager } from './sources/forevermaster/update.js';
+import { DatasetManager } from './sources/foreverdb/update.js';
 import { QuestieDatasetManager } from './sources/questiedb/update.js';
 import { Store, StoreError } from './storage/store.js';
 import { PowerShellCapture } from './transport/capture.js';
@@ -56,7 +56,7 @@ async function main(): Promise<number> {
     console.error('AddOns directory is not configured: run bun run install:addon --addons "<WoW>\\Interface\\AddOns".');
   }
 
-  // ForeverMaster: open the last working dataset immediately; update in the background every 24 hours.
+  // ForeverDB: open the last working dataset immediately; update in the background every 24 hours.
   const datasets = new DatasetManager({ store, cacheDir: paths.cache, clock: systemClock, diag });
   datasets.start();
   const questiedb = new QuestieDatasetManager({ store, cacheDir: paths.cache, clock: systemClock, diag });
@@ -141,7 +141,7 @@ async function main(): Promise<number> {
   });
   clearInterval(keepAlive);
   await capture.stop();
-  datasets.stop();
+  await datasets.stop();
   await questiedb.stop();
   publisher?.stop();
   await bridge.shutdown();

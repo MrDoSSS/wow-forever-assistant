@@ -11,8 +11,8 @@ import { decodeUtf8 } from '../bridge/src/app/messages.js';
 import { characterKeyOf } from '../bridge/src/ids.js';
 import { resourcePath } from '../bridge/src/paths.js';
 import { AltsSource, altRecordsOf, savedVariablesFiles, type AltRecord } from '../bridge/src/sources/alts.js';
-import type { RecipeRecord } from '../bridge/src/sources/forevermaster/decode.js';
-import { parseSavedVariables, type LiteralValue } from '../bridge/src/sources/forevermaster/parse.js';
+import type { RecipeRecord } from '../bridge/src/sources/shared/types.js';
+import { parseSavedVariables, type LiteralValue } from '../bridge/src/sources/shared/lua.js';
 import { AddonSession, identity, tempDir } from './fakes.js';
 import { LuaHost } from './lua-host.js';
 

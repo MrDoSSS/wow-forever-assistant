@@ -4,9 +4,9 @@
 // SavedVariables (sources/alts.ts), with in-game observation times per section.
 import type { QueryBody } from '../contracts.js';
 import type { AltRecord } from '../sources/alts.js';
-import type { RecipeRecord } from '../sources/forevermaster/decode.js';
+import type { RecipeRecord } from '../sources/foreverdb/decode.js';
 
-/** Profession skill IDs by ForeverMaster's English name, matching addon PROFESSION_SKILLS. */
+/** Profession skill IDs by ForeverDB's English name, matching addon PROFESSION_SKILLS. */
 export const PROFESSION_SKILL_IDS: Record<string, number> = {
   Alchemy: 171,
   Blacksmithing: 164,

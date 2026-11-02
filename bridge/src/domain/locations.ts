@@ -2,7 +2,7 @@
 // map mapping. The question snapshot supplies this mapping: the client reports
 // that its current uiMapID has a zone name (GetBestMapForUnit +
 // GetZoneText). If that name matches our table for the same uiMapID,
-// the client confirms ForeverMaster's coordinate system for that map. Other
+// the client confirms the reference coordinate system for that map. Other
 // maps remain unverified (ApproxLocation).
 import type { Snapshot, VerifiedLocation } from '../contracts.js';
 import { zoneNameOf } from '../sources/zones.js';

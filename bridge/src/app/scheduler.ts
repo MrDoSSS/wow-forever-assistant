@@ -22,7 +22,7 @@ export interface SchedulerDeps {
   diag: Diagnostics;
   /** After committing a result: deliveries are ready for publication. */
   onCommitted?: (characterKey: string) => void;
-  /** Current working ForeverMaster dataset, pinned to the question on its first attempt. */
+  /** Current working reference dataset, pinned to the question on its first attempt. */
   datasetId?: () => string | null;
   /** Verify that an interrupted attempt's process tree stopped after restart. */
   confirmStop?: (attempt: { jobName: string; childPid: number | null; childCreatedAt: number | null }) => Promise<boolean>;

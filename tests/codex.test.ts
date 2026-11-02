@@ -16,12 +16,12 @@ import { characterKeyOf, randomId } from '../bridge/src/ids.js';
 import { resourcePath } from '../bridge/src/paths.js';
 import { AltsSource } from '../bridge/src/sources/alts.js';
 import { callBridge } from '../bridge/src/sources/mcp.js';
-import { DatasetManager } from '../bridge/src/sources/forevermaster/update.js';
+import { DatasetManager } from '../bridge/src/sources/foreverdb/update.js';
 import { Store } from '../bridge/src/storage/store.js';
 import { AddonSession, ControlledModel, FakeClock, identity, tempDir } from './fakes.js';
 import { LuaHost } from './lua-host.js';
 import { readLua } from './lua-reader.js';
-import { syntheticForeverMasterArchive } from './forevermaster-fixture.js';
+import { foreverdbZip, minimalForeverDBData, syntheticForeverDBArchive } from './foreverdb-fixture.js';
 
 /** JavaScript value as a client-style WoW SavedVariables literal. */
 function wowLiteral(value: unknown): string {
@@ -53,7 +53,7 @@ function altsFixture(dir: string): string {
 }
 
 const windows = process.platform === 'win32';
-const SYNTHETIC_ARCHIVE = syntheticForeverMasterArchive();
+const SYNTHETIC_ARCHIVE = syntheticForeverDBArchive();
 const FAKE_CODEX = resourcePath('tests', 'fake-codex.ts');
 const MCP_SCRIPT = resourcePath('bridge', 'src', 'sources', 'mcp.ts');
 /** Wait with real timers because external processes are slower than the event loop. */
@@ -74,13 +74,13 @@ const alive = (pid: number) => {
   }
 };
 
-async function environment(options: { model?: 'controlled' | 'codex'; priceTimeoutMs?: number; callsPerAttempt?: number } = {}) {
+async function environment(options: { model?: 'controlled' | 'codex'; priceTimeoutMs?: number; callsPerAttempt?: number; archive?: Uint8Array } = {}) {
   const dir = tempDir();
   const clock = new FakeClock();
   const diag = new MemoryDiagnostics(clock);
   const store = Store.open({ path: join(dir, 'assistant.sqlite'), clock });
   const datasets = new DatasetManager({ store, cacheDir: join(dir, 'cache'), clock, diag, fetcher: () => Promise.reject(new Error('offline')) });
-  assert.equal((await datasets.importArchive(SYNTHETIC_ARCHIVE, { etag: null, lastModified: null })).status, 'activated');
+  assert.equal((await datasets.importArchive(options.archive ?? SYNTHETIC_ARCHIVE, { etag: null, lastModified: null })).status, 'activated');
   const committed: string[] = [];
   const hub = new ToolChannelHub({
     store,
@@ -270,11 +270,81 @@ describe('tool channel', { skip: !windows }, () => {
     assert.deepEqual((plan.data.steps as { recipeSpellId: number; crafts: number; crafter: string; learn: string }[]).map((s) => [s.recipeSpellId, s.crafts, s.crafter, s.learn]), [[14293, 3, 'Banker', 'known']]);
     assert.deepEqual(plan.data.fromInventory, [{ itemId: 10938, quantity: 3, from: [{ name: 'Banker', quantity: 3 }] }]);
     assert.deepEqual((plan.data.buy as { itemId: number; quantity: number }[]).map((b) => [b.itemId, b.quantity]), [[4470, 3]]);
-    assert.deepEqual(plan.data.transfers, [{ itemId: 4470, quantity: 3, from: 'Tester', to: 'Banker' }]);
+    assert.ok((plan.data.buy as { buyer: string }[]).every((row) => row.buyer === 'Banker'));
+    assert.deepEqual(plan.data.transfers, [{ itemId: 11287, quantity: 3, from: 'Banker', to: 'Tester' }]);
     assert.equal((plan.data.names as Record<string, string>)['4470'], 'Simple Wood');
     const ref = env.store.getVerifiedRef(plan.data.calculationId as string)!;
     assert.equal(ref.kind, 'calculation');
     assert.equal(ref.attempt_id, input.attemptId);
+  });
+
+  it('uses an owned finished item without querying auction prices or crafting a duplicate', async () => {
+    const { call, input } = await attemptWithChannel(env, (query) => {
+      const bags = query.snapshot.groups.bags;
+      if (bags.availability === 'available') bags.value = [{ bag: 0, slot: 1, item: { itemId: 11287, itemLink: null }, count: 1 }];
+    });
+    const recipe = await call('get_game_record', { type: 'recipe', id: 14293, recordKey: null, fields: [] });
+    const result = await call('plan_craft', { recipeRefId: recipe.data.recipeRefId, desiredQuantity: 1, inventoryScope: 'account', maxDepth: 3, lookupPrices: true });
+    assert.equal(result.status, 'ok');
+    assert.deepEqual(result.data.steps, []);
+    assert.deepEqual(result.data.buy, []);
+    assert.equal(result.data.totalCostCopper, 0);
+    assert.equal((result.data.names as Record<string, string>)['11287'], 'Lesser Magic Wand');
+    assert.deepEqual(result.data.fromInventory, [{ itemId: 11287, quantity: 1, from: [{ name: 'Tester', quantity: 1 }] }]);
+    assert.equal(env.store.rawQuery<{ n: number }>('SELECT count(*) AS n FROM price_lookups WHERE attempt_id = ?', input.attemptId)[0]!.n, 0);
+  });
+
+  it('includes vendor prices, provenance and stock limits in both crafting tools and mixed totals', async () => {
+    const data = minimalForeverDBData();
+    data['NPCs.lua'] = data['NPCs.lua']!.replace('ns.sold={}', 'ns.sold={[4470]={1317,38,1,0,4213,1,1,0},[10938]={1317,800,1,2}}');
+    const vendorEnv = await environment({ archive: foreverdbZip(data) });
+    try {
+      const { call, input } = await attemptWithChannel(vendorEnv, (query) => {
+        const prices = query.snapshot.groups.prices;
+        if (prices.availability === 'available') prices.value = [];
+      });
+      const recipe = await call('get_game_record', { type: 'recipe', id: 14293, recordKey: null, fields: [] });
+      for (const tool of ['calculate_craft', 'plan_craft']) {
+        const result = await call(tool, {
+          recipeRefId: recipe.data.recipeRefId, desiredQuantity: 3, inventoryScope: 'none',
+          ...(tool === 'plan_craft' ? { maxDepth: 3, lookupPrices: false } : {}),
+        });
+        assert.equal(result.status, 'ok');
+        assert.equal(result.data[tool === 'plan_craft' ? 'totalCostCopper' : 'priceTotalCopper'], 2514);
+        assert.deepEqual(result.data.unpricedItemIds, []);
+        const prices = result.data.prices as { itemId: number; source: string; unitPriceCopper: number; vendor: { npcId: number; datasetId: string } }[];
+        assert.deepEqual(prices.map((p) => [p.itemId, p.source, p.unitPriceCopper, p.vendor.npcId]), [[4470, 'vendor', 38, 1317], [10938, 'vendor', 800, 1317]]);
+        assert.ok(prices.every((p) => p.vendor.datasetId === input.datasetId));
+        assert.ok(result.limitations.some((l) => l.startsWith('vendor_restock_required: item 10938')));
+        const evidence = result.evidenceIds.flatMap((id) => vendorEnv.store.rawQuery<{ source_kind: string; used_content_json: string }>('SELECT source_kind, used_content_json FROM evidence WHERE evidence_id = ?', id));
+        assert.equal(evidence.filter((e) => e.source_kind === 'foreverdb' && JSON.parse(e.used_content_json).source === 'vendor').length, 2);
+        assert.ok(result.evidenceIds.every((id) => vendorEnv.store.isEvidenceLinked([input.attemptId], id)));
+        const ref = JSON.parse(vendorEnv.store.getVerifiedRef(result.data.calculationId as string)!.body_json);
+        assert.equal(ref.priceTotalCopper, 2514);
+      }
+      const mixed = await attemptWithChannel(vendorEnv, (query) => {
+        const prices = query.snapshot.groups.prices;
+        if (prices.availability === 'available') prices.value = [4470, 10938].map((itemId) => ({
+          item: { itemId, itemLink: null }, marketKey: 'auctionator:PvP', unit: 'per_item', priceCopper: itemId === 4470 ? 33 : 1450,
+          readOriginSessionId: 'd'.repeat(32), readAtSessionMs: 1, sourceObservedAtMs: null, ageDays: 0, agePrecision: 'day_bucket',
+          rawExactness: true, exactness: 'exact', source: 'auctionator_v1', sourceVersion: '341', unavailableReason: null,
+        }));
+      });
+      const mixedRecipe = await mixed.call('get_game_record', { type: 'recipe', id: 14293, recordKey: null, fields: [] });
+      for (const tool of ['calculate_craft', 'plan_craft']) {
+        const result = await mixed.call(tool, { recipeRefId: mixedRecipe.data.recipeRefId, desiredQuantity: 1, inventoryScope: 'none', ...(tool === 'plan_craft' ? { maxDepth: 3, lookupPrices: false } : {}) });
+        assert.equal(result.status, 'ok');
+        assert.equal(result.data[tool === 'plan_craft' ? 'totalCostCopper' : 'priceTotalCopper'], 833);
+        const prices = result.data.prices as { source: string; alternatives: { source: string; unitPriceCopper: number; vendor: { npcId: number } | null }[] }[];
+        assert.deepEqual(prices.map((p) => p.source), ['auctionator', 'vendor']);
+        assert.deepEqual(prices.map((p) => [p.alternatives[0]!.source, p.alternatives[0]!.unitPriceCopper, p.alternatives[0]!.vendor?.npcId ?? null]), [['vendor', 38, 1317], ['auctionator', 1450, null]]);
+        const evidence = result.evidenceIds.flatMap((id) => vendorEnv.store.rawQuery<{ source_kind: string; used_content_json: string }>('SELECT source_kind, used_content_json FROM evidence WHERE evidence_id = ?', id));
+        assert.ok(evidence.some((e) => e.source_kind === 'foreverdb' && JSON.parse(e.used_content_json).itemId === 4470 && JSON.parse(e.used_content_json).unitPriceCopper === 38), 'the unselected vendor quote is returned with evidence');
+        assert.ok(result.evidenceIds.every((id) => vendorEnv.store.isEvidenceLinked([mixed.input.attemptId], id)));
+      }
+    } finally {
+      await vendorEnv.cleanup();
+    }
   });
 
   it('verifies a plan in the reply and gives it back as the active plan of a later question', async () => {
@@ -346,8 +416,8 @@ describe('tool channel', { skip: !windows }, () => {
       zoneName: 'Stormwind City',
       x: 52.9,
       y: 74.4,
-      basis: 'ForeverMaster trainer record, NPC 1317',
-      sourceUrl: 'https://example.test/forevermaster',
+      basis: 'Trainer record, NPC 1317',
+      sourceUrl: 'https://foreverdb.net',
     });
     assert.equal(result.evidenceIds.length, 1);
     assert.ok(trainers.every((t) => t.locationRefId === null), 'the snapshot map is not confirmed');
@@ -381,7 +451,8 @@ describe('tool channel', { skip: !windows }, () => {
       [input.attemptId],
     );
     assert.ok(check.ok, check.ok ? '' : check.reason);
-    assert.deepEqual(check.ok && { ...check.reply.locationRef, refId: 'x', evidenceIds: [] }, { refId: 'x', entityKind: 'npc', entityId: '1317', title: 'Lucan Cordell', mapKey: 'uiMap:1453', x: 0.529, y: 0.744, evidenceIds: [] });
+    assert.deepEqual(check.ok && { ...check.reply.locationRef, refId: 'x', x: 0, y: 0, evidenceIds: [] }, { refId: 'x', entityKind: 'npc', entityId: '1317', title: 'Lucan Cordell', mapKey: 'uiMap:1453', x: 0, y: 0, evidenceIds: [] });
+    assert.ok(check.ok && Math.abs(check.reply.locationRef!.x - 0.529) < 1e-9 && Math.abs(check.reply.locationRef!.y - 0.744) < 1e-9);
     const output = { status: 'answer', text: 'Visit [[map:1]] and [[map:2]].', itemRefIds: [], evidenceIds: result.evidenceIds,
       locationRefId: null, approxLocation: null, calculationIds: [], limitations: [], clarification: null,
       locations: [

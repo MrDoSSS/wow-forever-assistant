@@ -1,8 +1,8 @@
-// Queries against the pinned ForeverMaster dataset for model tools.
+// Queries against the pinned local reference dataset for model tools.
 // Only dataset data lives here; attempt evidence, refIds and cursors are managed elsewhere.
 import type { DATASET_TYPES } from '../../contracts.js';
-import type { DatasetRecord, DatasetType, DecodedDataset, RecipeRecord, TrainerRecord } from './decode.js';
-import { searchIndex, type SearchIndex, type SearchPage } from './search.js';
+import type { DatasetRecord, DatasetType, DecodedDataset, RecipeRecord, TrainerRecord } from './types.js';
+import { searchIndex, type SearchIndex, type SearchPage } from './index.js';
 
 export type ToolStatus = 'ok' | 'not_found' | 'source_unavailable' | 'unsupported_format' | 'limit';
 
@@ -36,7 +36,7 @@ const PAGE = 100;
 
 /** General source limitations included in model replies. */
 export const SOURCE_LIMITATIONS = [
-  'forevermaster_snapshot: data as of the Pack date and build; a missing record does not prove the object is absent from the game',
+  'reference_snapshot: data as of the Pack date and build; a missing record does not prove the object is absent from the game',
   'trainer_is_candidate: a profession/class trainer does not prove that a specific recipe is taught',
   'taught_by_is_item: a recipe taughtBy is the item that teaches it, not an NPC',
 ];
@@ -49,7 +49,7 @@ function notFound<T>(limitation: string): ToolOutcome<T> {
   return { status: 'not_found', data: null, limitations: [limitation], nextOffset: null };
 }
 
-export class ForeverMasterSource {
+export class GameDataSource {
   private readonly reverse = new Map<number, ItemInfo['recipeSpellIds']>();
 
   constructor(
@@ -92,7 +92,7 @@ export class ForeverMasterSource {
     const note = typeof noteRecord?.fields === 'string' ? noteRecord.fields : null;
     const recipes = this.reverse.get(itemId) ?? { produces: [], reagentFor: [], taughtBy: [] };
     if (name === null && note === null && this.reverse.get(itemId) === undefined) {
-      return notFound(`item ${itemId} is not in the ForeverMaster dataset`);
+      return notFound(`item ${itemId} is not in the local reference dataset`);
     }
     const limitations = name === null ? ['name_unknown: the name is not in Search.lua'] : [];
     return ok({ itemId, name, note, recipeSpellIds: { ...recipes } }, limitations);
@@ -106,7 +106,7 @@ export class ForeverMasterSource {
 
   getRecipe(spellId: number): ToolOutcome<RecipeRecord> {
     const recipe = this.dataset.recipes[String(spellId)];
-    if (!recipe) return notFound(`recipe ${spellId} is not in the ForeverMaster dataset`);
+    if (!recipe) return notFound(`recipe ${spellId} is not in the local reference dataset`);
     const limitations = [...recipe.limitations];
     if (recipe.greenDerived) limitations.push('green_derived: green = floor((yellow+grey)/2)');
     if (recipe.outputItemId === null) limitations.push('no_output_item: an effect without a created item');

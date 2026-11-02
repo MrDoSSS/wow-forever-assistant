@@ -5,7 +5,7 @@ import { DatabaseSync } from '../bridge/src/storage/sqlite.js';
 import { describe, it } from 'node:test';
 import { sha256Hex } from '../bridge/src/ids.js';
 import { resourcePath } from '../bridge/src/paths.js';
-import { prepareDatabase, readSchemaStep, SchemaError, type SchemaStep } from '../bridge/src/storage/migrations.js';
+import { loadSchemaSteps, prepareDatabase, readSchemaStep, SchemaError, type SchemaStep } from '../bridge/src/storage/migrations.js';
 import { FakeClock, tempDir } from './fakes.js';
 
 const baseline = readSchemaStep(3, resourcePath('bridge', 'src', 'storage', 'schema.sql'));

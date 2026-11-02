@@ -24,16 +24,18 @@ import { CraftPlanError, planCraft, planItems, type Crafters } from '../domain/c
 import { calculateCraft, CraftLimitError, type Inventory } from '../domain/crafting.js';
 import { registerEvidence, registerRef, type EvidenceInput } from '../domain/evidence.js';
 import { confirmedMapOf, verifiedLocationOf } from '../domain/locations.js';
-import { choosePrice, type PriceChoice } from '../domain/pricing.js';
+import { chooseCraftPrice, type PriceChoice, type PurchasePrice } from '../domain/pricing.js';
 import { randomId, sha256Hex } from '../ids.js';
 import type { AltsSource } from '../sources/alts.js';
-import type { RecipeRecord } from '../sources/forevermaster/decode.js';
-import type { ForeverMasterSource } from '../sources/forevermaster/tools.js';
+import type { RecipeRecord } from '../sources/foreverdb/decode.js';
+import { sourceKindOf, type ReferenceSource } from '../sources/records.js';
 import { boundedFields, type QuestieSource } from '../sources/questiedb/tools.js';
 import { uiMapIdOf } from '../domain/locations.js';
 import { searchGameData } from '../sources/search.js';
 import { getGameRecord, type ReferencePoint } from '../sources/records.js';
 import { findServices, type ServiceFilter } from '../sources/services.js';
+import { vendorPrices } from '../sources/pricing.js';
+import { createCraftPurchaser, type PurchaseCharacter } from '../sources/craft-purchases.js';
 import type { PriceObservationRow, Store, VerifiedRefRow } from '../storage/store.js';
 import { encodeIpcFrame, IpcFrameReader, pipeNameFor } from './ipc.js';
 import { Outbox } from './outbox.js';
@@ -68,7 +70,7 @@ export interface AttemptContext {
 }
 
 export interface DatasetLookup {
-  sourceFor(datasetId: string): ForeverMasterSource | null;
+  sourceFor(datasetId: string): ReferenceSource | null;
 }
 
 interface Registrar {
@@ -121,7 +123,7 @@ export function observationOf(row: PriceObservationRow): PriceObservation {
 export class ToolChannelHub {
   private readonly channels = new Map<string, Channel>();
   private readonly priceWaiters = new Map<string, () => void>();
-  private readonly byOutput = new WeakMap<ForeverMasterSource, Map<number, RecipeRecord[]>>();
+  private readonly byOutput = new WeakMap<ReferenceSource, Map<number, RecipeRecord[]>>();
   private readonly outbox: Outbox;
   private readonly limits: ToolLimits;
 
@@ -272,7 +274,7 @@ export class ToolChannelHub {
     });
   }
 
-  private source(ctx: AttemptContext): ForeverMasterSource | null {
+  private source(ctx: AttemptContext): ReferenceSource | null {
     return ctx.datasetId ? this.deps.datasets.sourceFor(ctx.datasetId) : null;
   }
 
@@ -291,7 +293,7 @@ export class ToolChannelHub {
       case 'get_source_status': {
         return {
           status: source || channel.questie ? 'ok' : 'source_unavailable', limitations: [],
-          build: () => ({ data: { forevermaster: source?.status().data ?? { available: false }, questiedb: channel.questie?.status() ?? { available: false } }, evidenceIds: [] }),
+          build: () => ({ data: { [source ? sourceKindOf(source) : 'foreverdb']: source?.status().data ?? { available: false }, questiedb: channel.questie?.status() ?? { available: false } }, evidenceIds: [] }),
         };
       }
 
@@ -322,7 +324,7 @@ export class ToolChannelHub {
         return this.record(channel, args);
 
       case 'calculate_craft':
-        return this.calculate(ctx, args);
+        return this.calculate(channel, args);
 
       case 'lookup_prices':
         return this.lookupPrices(channel, ItemInput.array().parse(args.items));
@@ -404,7 +406,7 @@ export class ToolChannelHub {
     ];
     if (!who.faction) limitations.push('faction_unknown: services of both factions may be listed');
     if (args.service === 'mailbox') limitations.push('mailbox_faction: object restrictions are not evaluated as NPC friendliness');
-    if (args.service === 'vendor') limitations.push('vendor_offer: price, stock and character requirements are unknown');
+    if (args.service === 'vendor') limitations.push('vendor_offer: returned purchase quotes are static; absent prices, current stock, character discounts and requirements are unknown');
     let cursor: string | null = null;
     if (page.nextOffset !== null) {
       cursor = randomId();
@@ -416,14 +418,16 @@ export class ToolChannelHub {
       build: (reg) => {
         const evidenceIds: string[] = [];
         const bySource = new Map<string, string>();
-        for (const kind of ['forevermaster', 'questiedb'] as const) {
+        for (const kind of ['foreverdb', 'questiedb'] as const) {
           const rows = page.services.filter((row) => row.sources.some(({ source }) => source === kind));
           if (!rows.length) continue;
-          const datasetId = kind === 'forevermaster' ? master!.datasetId : questie!.datasetId;
+          const datasetId = kind === 'questiedb' ? questie!.datasetId : master!.datasetId;
           const content = rows.map((row) => ({
             id: row.id, type: row.type,
-            records: kind === 'forevermaster' ? master!.dataset.trainers.filter(({ npcId }) => npcId === row.id)
-              : boundedFields({ fields: questie!.get(row.type, row.id)!.fields }).fields,
+            records: kind === 'questiedb' ? boundedFields({ fields: questie!.get(row.type, row.id)!.fields }).fields
+              : { trainers: master!.dataset.trainers.filter(({ npcId }) => npcId === row.id),
+                vendorPriceCopper: row.vendorPriceCopper ?? null, vendorStack: row.vendorStack ?? null,
+                limitedStock: row.limitedStock ?? null, priceSource: row.priceSource ?? null },
             locations: [row, ...row.alternateLocations].filter((point) => point.source === kind).map(({ uiMapId, x, y }) => ({ uiMapId, x, y })),
           }));
           const evidenceId = reg.evidence({
@@ -530,7 +534,43 @@ export class ToolChannelHub {
     };
   }
 
-  private calculate(ctx: AttemptContext, args: Record<string, unknown>): Prepared {
+  private craftPrices(channel: Channel, items: readonly number[], observations: readonly PriceObservation[]): Map<number, PriceChoice> {
+    const { ctx } = channel;
+    const source = this.source(ctx);
+    const market = this.expectedMarket(ctx, observations);
+    const character = ctx.query.snapshot.groups.character;
+    const position = ctx.query.snapshot.groups.position;
+    const buyer = {
+      faction: character.availability === 'available' ? character.value.faction : null,
+      zoneName: position.availability === 'available' ? position.value.zoneName : null,
+    };
+    return new Map(items.map((itemId) => [itemId, chooseCraftPrice(itemId, observations, market, vendorPrices(source, channel.questie, itemId, buyer))]));
+  }
+
+  private priceEvidence(reg: Registrar, ctx: AttemptContext, prices: readonly PurchasePrice[]): string[] {
+    const quotes = prices.flatMap(({ alternatives, ...price }) => [price,
+      ...alternatives.map((alternative) => ({ itemId: price.itemId, quantity: price.quantity, ...alternative })),
+    ]);
+    const evidenceIds: string[] = [];
+    for (const price of quotes) {
+      const quote = price.vendor ?? price.referenceQuote;
+      if (quote || price.observation) evidenceIds.push(reg.evidence({
+        sourceKind: quote ? 'foreverdb' : 'auctionator', datasetId: quote?.datasetId ?? null,
+        recordKey: quote?.recordKey ?? `price/${price.itemId}`, sourceUrl: quote ? this.source(ctx)?.dataset.pack.site ?? null : null,
+        content: price, applicability: { snapshotId: ctx.query.snapshot.snapshotId }, purpose: 'price',
+      }));
+      const site = price.purchaseAt;
+      if (site && (!quote || site.npcId !== quote.npcId || site.source !== 'foreverdb')) evidenceIds.push(reg.evidence({
+        sourceKind: site.source, datasetId: site.datasetId, recordKey: `npc/${site.npcId}`, sourceUrl: null,
+        content: { itemId: price.itemId, quantity: price.quantity, purchaseAt: site, priceBasis: price.priceBasis },
+        applicability: { snapshotId: ctx.query.snapshot.snapshotId }, purpose: 'purchase_location',
+      }));
+    }
+    return evidenceIds;
+  }
+
+  private calculate(channel: Channel, args: Record<string, unknown>): Prepared {
+    const { ctx } = channel;
     const refRow = this.deps.store.getVerifiedRef(args.recipeRefId as string);
     if (!refRow || refRow.kind !== 'recipe' || !this.attemptIds(ctx).includes(refRow.attempt_id)) {
       return notFound(['unknown_recipe_ref: get recipeRefId from get_game_record with type="recipe" for this question']);
@@ -546,8 +586,7 @@ export class ToolChannelHub {
     const observations = this.deps.store.listRequestPriceObservations(ctx.request).map(observationOf);
     const snapshotPrices = ctx.query.snapshot.groups.prices;
     if (snapshotPrices.availability === 'available') observations.unshift(...snapshotPrices.value);
-    const market = this.expectedMarket(ctx, observations);
-    const prices = new Map<number, PriceChoice>(recipe.reagents.map((r) => [r.itemId, choosePrice(r.itemId, observations, market)]));
+    const prices = this.craftPrices(channel, recipe.reagents.map((r) => r.itemId), observations);
     let result;
     try {
       result = calculateCraft({ recipe, desiredQuantity: args.desiredQuantity as number, inventory, prices });
@@ -568,7 +607,7 @@ export class ToolChannelHub {
           applicability: { snapshotId: ctx.query.snapshot.snapshotId },
           purpose: 'calculation',
         });
-        let calculation: Calculation | null = null;
+        let calculation: (Calculation & { prices: PurchasePrice[] }) | null = null;
         reg.ref('calculation', (refId) => {
           calculation = {
             calculationId: refId,
@@ -578,16 +617,17 @@ export class ToolChannelHub {
             priceTotalCopper: result.priceTotalCopper,
             unpricedItemIds: result.unpricedItemIds,
             limitations: result.limitations,
+            prices: result.prices,
           };
           return calculation;
         });
-        return { data: calculation, evidenceIds: [evidenceId] };
+        return { data: calculation, evidenceIds: [evidenceId, ...this.priceEvidence(reg, ctx, result.prices)] };
       },
     };
   }
 
   /** Dataset recipes indexed by output item for intermediate plan_craft products. */
-  private recipesByOutput(source: ForeverMasterSource): Map<number, RecipeRecord[]> {
+  private recipesByOutput(source: ReferenceSource): Map<number, RecipeRecord[]> {
     let map = this.byOutput.get(source);
     if (!map) {
       map = new Map();
@@ -611,7 +651,7 @@ export class ToolChannelHub {
       return notFound(['unknown_recipe_ref: get recipeRefId from get_game_record with type="recipe" for this question']);
     }
     const source = this.source(ctx);
-    if (!source) return unavailable('forevermaster_unavailable');
+    if (!source) return unavailable('foreverdb_unavailable');
     const recipe = { ...(JSON.parse(refRow.body_json) as RecipeRecord), limitations: [] };
     const recipesByOutput = this.recipesByOutput(source);
     const account = this.account(ctx);
@@ -663,7 +703,9 @@ export class ToolChannelHub {
     }
 
     const maxDepth = args.maxDepth as number;
-    const items = planItems({ recipe, maxDepth, recipesByOutput, crafters });
+    const desiredQuantity = args.desiredQuantity as number;
+    const ownedOutput = recipe.outputItemId === null ? 0 : [...stock.values()].reduce((total, items) => Math.min(desiredQuantity, total + (items.get(recipe.outputItemId!) ?? 0)), 0);
+    const items = ownedOutput >= desiredQuantity ? [] : planItems({ recipe, maxDepth, recipesByOutput, crafters });
     const observations = this.deps.store.listRequestPriceObservations(ctx.request).map(observationOf);
     const snapshotPrices = ctx.query.snapshot.groups.prices;
     if (snapshotPrices.availability === 'available') observations.unshift(...snapshotPrices.value);
@@ -674,19 +716,38 @@ export class ToolChannelHub {
       if (asked.outcome === 'timeout') limitations.push('price_lookup_timeout: the addon did not return prices within 180 s; known prices were used');
       observations.push(...asked.observations);
     }
-    const market = this.expectedMarket(ctx, observations);
-    const prices = new Map<number, PriceChoice>(items.map((itemId) => [itemId, choosePrice(itemId, observations, market)]));
+    const character = ctx.query.snapshot.groups.character;
+    const position = ctx.query.snapshot.groups.position;
+    const current: PurchaseCharacter = {
+      name: buyer, faction: character.availability === 'available' ? character.value.faction : null,
+      zoneName: position.availability === 'available' ? position.value.zoneName || null : null,
+      uiMapId: position.availability === 'available' && position.value.mapKey ? uiMapIdOf(position.value.mapKey) : null,
+      x: position.availability === 'available' ? position.value.x : null, y: position.availability === 'available' ? position.value.y : null,
+    };
+    const characters: PurchaseCharacter[] = view.map((c) => ({ name: c.name, faction: c.summary?.value.faction ?? null,
+      zoneName: c.summary?.value.zoneName ?? null, uiMapId: null, x: null, y: null }));
+    const purchaseFor = createCraftPurchaser({ source, questie: channel.questie, current, characters,
+      observations, expectedMarket: this.expectedMarket(ctx, observations) });
 
     let plan;
     try {
-      plan = planCraft({ recipe, desiredQuantity: args.desiredQuantity as number, maxDepth, recipesByOutput, stock, buyer, crafters, prices });
+      plan = planCraft({ recipe, desiredQuantity: args.desiredQuantity as number, maxDepth, recipesByOutput, stock, buyer, crafters, prices: new Map(), purchaseFor });
     } catch (error) {
       if (error instanceof CraftPlanError) return { status: 'limit', limitations: [`plan_limit: ${error.message}`] };
       throw error;
     }
-    limitations.push(...plan.limitations, 'plan_semantics: prices are the last Auctionator observations; an intermediate is crafted when that is cheaper or it has no price');
+    limitations.push(...plan.limitations, 'plan_semantics: use owned items across the account first, including owned outputs; missing materials are bought by their crafter at local services when found. Reference estimates at unpriced local vendors are labeled; cheaper remote quotes are alternatives, not automatic detours or transfers');
+    const funding = plan.purchaseTotals.map((row) => {
+      const moneyCopper = view.find((c) => c.name === row.buyer)?.summary?.value.moneyCopper ??
+        (row.buyer === current.name && character.availability === 'available' ? character.value.moneyCopper : null);
+      return { ...row, knownMoneyCopper: moneyCopper,
+        shortfallCopper: row.totalCostCopper !== null && row.unpricedItemIds.length === 0 && moneyCopper !== null
+          ? Math.max(0, row.totalCostCopper - moneyCopper) : null };
+    });
     const names: Record<string, string | null> = {};
-    for (const itemId of [...items, ...plan.steps.flatMap((s) => (s.outputItemId === null ? [] : [s.outputItemId]))]) {
+    for (const itemId of [...items, ...(recipe.outputItemId === null ? [] : [recipe.outputItemId]),
+      ...plan.fromInventory.map((row) => row.itemId), ...plan.transfers.map((row) => row.itemId),
+      ...plan.steps.flatMap((s) => (s.outputItemId === null ? [] : [s.outputItemId]))]) {
       names[String(itemId)] = source.dataset.names[String(itemId)] ?? null;
     }
     const datasetId = ctx.datasetId;
@@ -696,12 +757,13 @@ export class ToolChannelHub {
       limitations: [...new Set(limitations)],
       build: (reg) => {
         const evidenceIds = [
+          ...this.priceEvidence(reg, ctx, plan.prices),
           reg.evidence({
             sourceKind: 'calculation',
             datasetId,
             recordKey: `plan/${recipe.spellId}`,
             sourceUrl: null,
-            content: { args, plan },
+            content: { args, plan, funding },
             applicability: { snapshotId: ctx.query.snapshot.snapshotId },
             purpose: 'calculation',
           }),
@@ -710,7 +772,7 @@ export class ToolChannelHub {
           const used = source.dataset.recipes[String(step.recipeSpellId)];
           if (!used || used.spellId === recipe.spellId) continue;
           const { limitations: _l, ...fields } = used;
-          evidenceIds.push(reg.evidence({ sourceKind: 'forevermaster', datasetId, recordKey: `recipes/${used.spellId}`, sourceUrl: null, content: fields, applicability, purpose: 'recipe' }));
+          evidenceIds.push(reg.evidence({ sourceKind: sourceKindOf(source), datasetId, recordKey: `recipes/${used.spellId}`, sourceUrl: null, content: fields, applicability, purpose: 'recipe' }));
         }
         // calculationIds calculation: purchases are rows, total is their cost; keep the full plan alongside it.
         const calculationId = reg.ref('calculation', (refId) => {
@@ -723,9 +785,9 @@ export class ToolChannelHub {
             unpricedItemIds: plan.unpricedItemIds,
             limitations: plan.limitations,
           };
-          return { ...calculation, plan };
+          return { ...calculation, plan, funding };
         });
-        return { data: { calculationId, ...plan, names }, evidenceIds };
+        return { data: { calculationId, ...plan, funding, names }, evidenceIds };
       },
     };
   }

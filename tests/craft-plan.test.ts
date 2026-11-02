@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { CraftPlanError, planCraft, planItems, type Crafters, type PlanInput } from '../bridge/src/domain/craft-plan.js';
-import type { PriceChoice } from '../bridge/src/domain/pricing.js';
-import type { RecipeRecord } from '../bridge/src/sources/forevermaster/decode.js';
+import { purchasePrice, type PriceChoice } from '../bridge/src/domain/pricing.js';
+import type { RecipeRecord } from '../bridge/src/sources/shared/types.js';
 
 const ORE = 2770;
 const BAR = 2840;
@@ -66,8 +66,8 @@ describe('craft plan', () => {
     const plan = planCraft(input({}));
     assert.deepEqual(plan.steps.map((s) => [s.recipeSpellId, s.crafts, s.crafter]), [[2657, 6, 'Main'], [9999, 1, 'Main'], [2661, 1, 'Main']]);
     assert.deepEqual(plan.buy, [
-      { itemId: ORE, quantity: 6, unitPriceCopper: null, totalCopper: null },
-      { itemId: SILK, quantity: 1, unitPriceCopper: null, totalCopper: null },
+      { itemId: ORE, quantity: 6, buyer: 'Main', unitPriceCopper: null, totalCopper: null },
+      { itemId: SILK, quantity: 1, buyer: 'Main', unitPriceCopper: null, totalCopper: null },
     ]);
     assert.equal(plan.totalCostCopper, null);
     assert.deepEqual(plan.unpricedItemIds, [ORE, SILK]);
@@ -106,7 +106,7 @@ describe('craft plan', () => {
     ].sort((a, b) => a.itemId - b.itemId));
     assert.deepEqual(
       plan.transfers.map((t) => [t.itemId, t.quantity, t.from, t.to]).sort(),
-      [[BAR, 2, 'Main', 'Smith'], [BAR, 4, 'Bank', 'Smith'], [THREAD, 1, 'Bank', 'Smith']].sort(),
+      [[BAR, 2, 'Main', 'Smith'], [BAR, 4, 'Bank', 'Smith'], [THREAD, 1, 'Bank', 'Smith'], [BELT, 1, 'Smith', 'Main']].sort(),
     );
   });
 
@@ -125,7 +125,8 @@ describe('craft plan', () => {
     const plan = planCraft(input({ crafters: knownBy({ Smith: [2661] }, { Miner: [2657], Tailor: [9999] }) }));
     assert.deepEqual(plan.steps.map((s) => [s.recipeSpellId, s.crafter, s.learn]), [[2657, 'Miner', 'trainer'], [9999, 'Tailor', 'trainer'], [2661, 'Smith', 'known']]);
     assert.ok(plan.limitations.some((l) => l.startsWith('learn_first')));
-    assert.deepEqual(plan.transfers.map((t) => [t.itemId, t.from, t.to]).sort(), [[BAR, 'Miner', 'Smith'], [THREAD, 'Tailor', 'Smith'], [ORE, 'Main', 'Miner'], [SILK, 'Main', 'Tailor']].sort());
+    assert.deepEqual(plan.transfers.map((t) => [t.itemId, t.from, t.to]).sort(), [[BAR, 'Miner', 'Smith'], [THREAD, 'Tailor', 'Smith'], [BELT, 'Smith', 'Main']].sort());
+    assert.deepEqual(plan.buy.map((b) => [b.itemId, b.buyer]).sort(), [[ORE, 'Miner'], [SILK, 'Tailor']].sort());
 
     // Do not propose intermediate recipes requiring patterns: buy the thread instead.
     const pattern = { ...SPIN, taughtByItemId: 5555 };
@@ -149,5 +150,57 @@ describe('craft plan', () => {
     assert.deepEqual(plan.buy.map((b) => [b.itemId, b.quantity]), [[102, 2]]);
     assert.deepEqual(planItems(input({})), [ORE, BAR, THREAD, SILK].sort((x, y) => x - y));
     assert.throws(() => planCraft(input({ maxDepth: 9 })), CraftPlanError);
+  });
+
+  it('uses owned reagents on every character before buying only the shortfall on the crafter', () => {
+    const top = recipe(42, 'Blacksmithing', BELT, [[ORE, 5], [THREAD, 2]]);
+    const plan = planCraft(input({ recipe: top, crafters: knownBy({ Smith: [42] }),
+      stock: new Map([['Main', new Map([[ORE, 2]])], ['Bank', new Map([[ORE, 2], [THREAD, 2]])]]),
+      prices: prices({ [ORE]: 1, [THREAD]: 1 }), maxDepth: 0 }));
+    assert.deepEqual(plan.buy, [{ itemId: ORE, quantity: 1, buyer: 'Smith', unitPriceCopper: 1, totalCopper: 1 }]);
+    assert.equal(plan.fromInventory.find((row) => row.itemId === ORE)!.quantity, 4);
+    assert.equal(plan.fromInventory.find((row) => row.itemId === THREAD)!.quantity, 2);
+    assert.ok(plan.transfers.some((t) => t.from === 'Bank' && t.to === 'Smith' && t.itemId === THREAD));
+    assert.ok(!plan.transfers.some((t) => t.itemId === ORE && t.from === 'Smith'));
+  });
+
+  it('uses owned finished items before crafting the missing output', () => {
+    const fullyOwned = planCraft(input({ stock: new Map([['Bank', new Map([[BELT, 2]])]]), desiredQuantity: 2 }));
+    assert.deepEqual(fullyOwned.steps, []);
+    assert.deepEqual(fullyOwned.buy, []);
+    assert.equal(fullyOwned.totalCostCopper, 0);
+    assert.deepEqual(fullyOwned.transfers, [{ itemId: BELT, quantity: 2, from: 'Bank', to: 'Main' }]);
+    const partial = planCraft(input({ stock: new Map([['Bank', new Map([[BELT, 1]])]]), desiredQuantity: 2 }));
+    assert.equal(partial.steps.find((step) => step.recipeSpellId === MAKE_BELT.spellId)!.crafts, 1);
+  });
+
+  it('keeps intermediate crafts and their purchases on the consumer when it knows those recipes', () => {
+    const plan = planCraft(input({ crafters: knownBy({ Main: [2657, 9999], Smith: [2657, 2661, 9999] }) }));
+    assert.ok(plan.steps.every((step) => step.crafter === 'Smith'));
+    assert.ok(plan.buy.every((row) => row.buyer === 'Smith'));
+    assert.deepEqual(plan.transfers, [{ itemId: BELT, quantity: 1, from: 'Smith', to: 'Main' }]);
+  });
+
+  it('keeps purchases of the same material separate for different crafters', () => {
+    const top = recipe(43, 'Blacksmithing', BELT, [[ORE, 2], [BAR, 1]]);
+    const plan = planCraft(input({ recipe: top, crafters: knownBy({ Main: [2657], Smith: [43] }), prices: prices({ [ORE]: 10 }) }));
+    assert.deepEqual(plan.buy.map((row) => [row.itemId, row.quantity, row.buyer]), [[ORE, 1, 'Main'], [ORE, 2, 'Smith']]);
+    assert.deepEqual(plan.purchaseTotals.map((row) => [row.buyer, row.totalCostCopper]), [['Main', 10], ['Smith', 20]]);
+    assert.ok(!plan.transfers.some((transfer) => transfer.itemId === ORE));
+  });
+
+  it('keeps cheaper extra-character crafts optional, but uses owned raw materials before local purchases', () => {
+    const top = recipe(44, 'Blacksmithing', BELT, [[BAR, 1]]);
+    const p = prices({ [ORE]: 1, [BAR]: 100 });
+    const base = input({ recipe: top, crafters: knownBy({ Main: [2657], Smith: [44] }), prices: p,
+      purchaseFor: (itemId, quantity, buyer) => ({ ...purchasePrice(itemId, quantity, p.get(itemId)), buyer, local: true }) });
+    const convenient = planCraft(base);
+    assert.deepEqual(convenient.steps.map((step) => step.recipeSpellId), [44]);
+    assert.equal(convenient.buy[0]!.buyer, 'Smith');
+    assert.deepEqual(convenient.craftAlternatives.map((row) => [row.recipeSpellId, row.crafter, row.estimatedCostCopper]), [[2657, 'Main', 1]]);
+    const owned = planCraft({ ...base, stock: new Map([['Bank', new Map([[ORE, 1]])]]) });
+    assert.deepEqual(owned.buy, []);
+    assert.deepEqual(owned.steps.map((step) => step.recipeSpellId), [2657, 44]);
+    assert.ok(owned.transfers.some((row) => row.from === 'Bank' && row.to === 'Main' && row.itemId === ORE));
   });
 });

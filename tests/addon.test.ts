@@ -572,7 +572,7 @@ describe('item links, Auctionator prices and the map point', () => {
       'reply',
       `{ status = "answer", text = "Vance Undergloom", evidenceIds = {}, calculationIds = {},
          itemRefs = { { refId = "${hex('c')}", itemId = 118, evidenceIds = { "${hex('e')}" } }, { refId = "${hex('d')}", itemId = 99999, evidenceIds = { "${hex('e')}" } } },
-         approxLocation = { title = "Vance Undergloom", zoneName = "Undercity", x = 61.8, y = 51.6, basis = "ForeverMaster trainer record, NPC 5695", sourceUrl = "https://foreverchanges.pro" },
+         approxLocation = { title = "Vance Undergloom", zoneName = "Undercity", x = 61.8, y = 51.6, basis = "Trainer record, NPC 5695", sourceUrl = "https://example.test/reference" },
          limitations = { "approx_location" } }`,
     );
     lua.run('TEST_ENTRY = __FA_NS.Assistant.state.history[#__FA_NS.Assistant.state.history]');
@@ -610,7 +610,8 @@ describe('item links, Auctionator prices and the map point', () => {
     assert.equal(lua.eval('select(2, __FA_NS.Map.trackEntry(TEST_ENTRY.entryId))'), 'no_waypoint_api');
 
     const link = lua.eval('__FA_NS.Items.mapLink(TEST_ENTRY.entryId, TEST_POINT)');
-    assert.ok(link.startsWith('|cffff9933|Hfamap:') && link.includes('|h[Vance Undergloom (Undercity 61.8, 51.6)]|h|r |cff888888(not verified)|r'), link);
+    assert.ok(link.startsWith('|cffff9933|Hfamap:') && link.includes('|h[Vance Undergloom (Undercity 61.8, 51.6)]|h|r'), link);
+    assert.ok(!link.includes('(not verified)'), link);
     assert.ok(link.endsWith(`|Hfatrack:${lua.eval('TEST_ENTRY.entryId')}|h[Track]|h|r`), link);
     const target = link.slice(link.indexOf('|H') + 2, link.indexOf('|h'));
     assert.equal(lua.eval(`__FA_NS.Items.mapEntryId(${LuaHost.literal(target)})`), lua.eval('TEST_ENTRY.entryId'));

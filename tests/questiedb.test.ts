@@ -12,14 +12,14 @@ import { decodeCbor } from '../bridge/src/sources/questiedb/cbor.js';
 import { decodeQuestieDataset } from '../bridge/src/sources/questiedb/decode.js';
 import { QuestieSource } from '../bridge/src/sources/questiedb/tools.js';
 import { QuestieDatasetManager, QUESTIEDB_RELEASE_URL } from '../bridge/src/sources/questiedb/update.js';
-import { DatasetManager } from '../bridge/src/sources/forevermaster/update.js';
+import { DatasetManager } from '../bridge/src/sources/foreverdb/update.js';
 import { searchGameData } from '../bridge/src/sources/search.js';
 import { getGameRecord } from '../bridge/src/sources/records.js';
 import { findServices, type ServiceFilter } from '../bridge/src/sources/services.js';
 import { Store } from '../bridge/src/storage/store.js';
 import { AddonSession, ControlledModel, FakeClock, identity, tempDir } from './fakes.js';
 import { cbor, questieFiles, questieZip } from './questiedb-fixture.js';
-import { forevermasterZip, minimalData } from './zip-writer.js';
+import { foreverdbZip, minimalForeverDBData } from './foreverdb-fixture.js';
 
 const metadata = { datasetId: 'a'.repeat(32), archiveSha256: 'b'.repeat(64), sourceUrl: 'https://github.com/Questie/QuestieDB/releases/download/v1.0.9/QuestieDB-Forever.zip' };
 const importMeta = { sourceUrl: metadata.sourceUrl, releaseTag: 'v1.0.9', etag: '"release-9"', lastModified: null };
@@ -104,11 +104,11 @@ describe('QuestieDB independent snapshots and updates', () => {
     } finally { env.store.close(); }
   });
 
-  it('keeps ForeverMaster active and never replaces the working reference with a bad candidate', async () => {
+  it('keeps ForeverDB active and never replaces the working reference with a bad candidate', async () => {
     const env = environment();
     const master = new DatasetManager(env);
     try {
-      assert.equal((await master.importArchive(forevermasterZip(minimalData()), { etag: null, lastModified: null })).status, 'activated');
+      assert.equal((await master.importArchive(foreverdbZip(minimalForeverDBData()), { etag: null, lastModified: null })).status, 'activated');
       assert.equal((await env.manager.importArchive(questieZip(), importMeta)).status, 'activated');
       const pinned = env.manager.source!;
       assert.equal((await env.manager.importArchive(questieZip(), importMeta)).status, 'unchanged');
@@ -118,13 +118,13 @@ describe('QuestieDB independent snapshots and updates', () => {
       assert.equal((await env.manager.importArchive(unsafe, importMeta)).status, 'rejected');
       assert.equal((await env.manager.importArchive(questieZip({ version: '1.0.10' }), importMeta)).status, 'rejected');
       assert.equal(env.manager.source!.datasetId, pinned.datasetId);
-      assert.equal(env.store.getActiveDataset()!.dataset_id, master.source!.datasetId);
+      assert.equal(env.store.getActiveDataset('foreverdb')!.dataset_id, master.source!.datasetId);
       assert.equal(env.store.getActiveDataset('questiedb')!.dataset_id, pinned.datasetId);
       const meta10 = { ...importMeta, releaseTag: 'v1.0.10', sourceUrl: metadata.sourceUrl.replace('1.0.9', '1.0.10') };
       assert.equal((await env.manager.importArchive(questieZip({ version: '1.0.10' }), meta10)).status, 'activated');
       assert.equal(env.store.getDataset(pinned.datasetId)!.status, 'retired');
       assert.equal(pinned.get('npc', 8670)!.name, 'Auctioneer Chilton', 'already pinned objects remain readable');
-      assert.equal(env.store.getActiveDataset()!.dataset_id, master.source!.datasetId);
+      assert.equal(env.store.getActiveDataset('foreverdb')!.dataset_id, master.source!.datasetId);
     } finally { env.store.close(); }
   });
 
@@ -194,7 +194,7 @@ describe('QuestieDB model tools', () => {
       const searched = await call('search_game_data', { query: '4470', types: ['item'], cursor: null });
       assert.equal(searched.status, 'ok', 'search works when only QuestieDB is available');
       assert.equal((searched.data as { hits: { records: { source: string }[] }[] }).hits[0]!.records[0]!.source, 'questiedb');
-      assert.ok(searched.limitations.includes('forevermaster_unavailable: results from this source are missing'));
+      assert.ok(searched.limitations.includes('foreverdb_unavailable: results from this source are missing'));
       const searchFirst = await call('search_game_data', { query: 'Auctioneer', types: ['npc'], cursor: null });
       assert.ok(searchFirst.cursor);
       const searchSecond = await call('search_game_data', { query: 'Auctioneer', types: ['npc'], cursor: searchFirst.cursor });
@@ -237,15 +237,46 @@ describe('unified reference search', () => {
   async function references(name = 'Wood Name A', many = 0) {
     const env = environment();
     const master = new DatasetManager(env);
-    const data = minimalData({
-      'Search.lua': `ForeverMasterData.names = [[2 A Test Quest\n${(4470 - 2).toString(36)} ${name}\n]]`,
-      'Items.lua': 'ForeverMasterData.items = { [2]="c||Quest reward", [4470]="c|v|A changed item" }',
+    const data = minimalForeverDBData({
+      'SearchNames.lua': `local _, ns = ...\nns.searchItemNames = {[2]="A Test Quest",[4470]=${JSON.stringify(name)}}`,
+      'Items.lua': 'local _, ns = ...\nns.items = { [2]="c|qTest quest", [4470]="c|v1~Synthetic vendor~Elwynn Forest~0" }',
     });
-    assert.equal((await master.importArchive(forevermasterZip(data), { etag: null, lastModified: null })).status, 'activated');
+    data['Recipes.lua'] = data['Recipes.lua']!.replace('[4470]="Simple Wood"', `[4470]=${JSON.stringify(name)}`);
+    assert.equal((await master.importArchive(foreverdbZip(data), { etag: null, lastModified: null })).status, 'activated');
     const dataset = decodeQuestieDataset(questieFiles({ many }), metadata);
     dataset.entities.item['4471'] = { ...dataset.entities.item['4470']!, id: 4471 };
     return { ...env, master: master.source!, questie: new QuestieSource(dataset) };
   }
+
+  function withVendorOffers(env: Awaited<ReturnType<typeof references>>) {
+    env.master.dataset.npcs!['54'] = { id: 54, name: 'Test Vendor', title: 'Trade Supplies', uiMapId: 1453, x: 60.5, y: 71.5, faction: 'alliance', seenInForever: true };
+    env.master.dataset.npcs!['90054'] = { id: 90054, name: 'Hostile Vendor', title: 'Trade Supplies', uiMapId: 1453, x: 61, y: 72, faction: 'horde', seenInForever: true };
+    env.master.dataset.vendorOffers!['4470'] = [
+      { npcId: 54, itemId: 4470, priceCopper: 100, stack: 5, limited: 2, source: 'unknown' },
+      { npcId: 90054, itemId: 4470, priceCopper: 50, stack: 5, limited: 0, source: 'forever' },
+    ];
+    env.questie.dataset.entities.npc['90055'] = { type: 'npc', id: 90055, name: 'Unpriced Vendor', localizedNames: [], fields: { name: 'Unpriced Vendor', npcFlags: 4, friendlyToFaction: 'A', spawns: { '1519': [[62, 73]] } } };
+    env.questie.dataset.entities.item['4470']!.fields.vendors = [54, 90055];
+  }
+
+  it('keeps vendor purchase bundles and price provenance, filters faction and zone, and leaves unpriced candidates unknown', async () => {
+    const env = await references();
+    try {
+      withVendorOffers(env);
+      const filter: ServiceFilter = { service: 'vendor', itemId: 4470, zoneName: 'Stormwind City', profession: null, classToken: null };
+      const page = findServices(env.master, env.questie, filter, who);
+      const vendor = page.services.find(({ id }) => id === 54)!;
+      assert.ok(vendor);
+      assert.deepEqual([vendor.vendorPriceCopper, vendor.vendorStack, vendor.unitPriceCopper, vendor.limitedStock, vendor.priceSource], [100, 5, 20, 2, 'unknown']);
+      assert.equal(vendor.source, 'foreverdb');
+      assert.deepEqual([vendor.x, vendor.y], [60.5, 71.5]);
+      assert.deepEqual(vendor.alternateLocations.map(({ x, y }) => [x, y]), [[61, 72]]);
+      assert.ok(page.services.every(({ uiMapId, id }) => uiMapId === 1453 && id !== 90054));
+      assert.equal(page.services.find(({ id }) => id === 90055)!.vendorPriceCopper, undefined);
+      assert.ok(page.limitations.some((value) => value.startsWith('vendor_quote:')));
+      assert.equal(findServices(env.master, null, filter, who).services[0]!.vendorPriceCopper, 100, 'known vendor offers work without QuestieDB');
+    } finally { env.store.close(); }
+  });
 
   it('groups the same item by ID while keeping conflicting source text and original fetch keys', async () => {
     const env = await references();
@@ -255,7 +286,7 @@ describe('unified reference search', () => {
       const item = page.hits[0]!;
       assert.deepEqual([item.type, item.id, item.name], ['item', 4470, 'Wood Name A']);
       assert.equal(item.totalRecords, 3);
-      assert.deepEqual(new Set(item.records.map((record) => record.source)), new Set(['forevermaster', 'questiedb']));
+      assert.deepEqual(new Set(item.records.map((record) => record.source)), new Set(['foreverdb', 'questiedb']));
       assert.ok(item.records.some((record) => record.text === 'Simple Wood'));
       assert.ok(item.records.some((record) => record.text === 'Wood Name A'));
       const note = item.records.find((record) => record.type === 'items')!;
@@ -281,7 +312,7 @@ describe('unified reference search', () => {
       assert.equal(second.nextOffset, null);
       assert.ok(searchGameData(env.master, env.questie, 'Auctioneer', ['npc']).hits.every((hit) => hit.type === 'npc'));
       assert.equal(searchGameData(env.master, env.questie, '14293', ['recipe']).hits[0]!.id, 14293);
-      assert.equal(searchGameData(env.master, env.questie, '198', ['npc']).hits[0]!.records[0]!.source, 'forevermaster');
+      assert.equal(searchGameData(env.master, env.questie, '198', ['npc']).hits[0]!.records[0]!.source, 'foreverdb');
       assert.equal(searchGameData(env.master, env.questie, '2', ['quest']).hits[0]!.records[0]!.source, 'questiedb');
       assert.equal(searchGameData(env.master, env.questie, '', []).total, 0);
     } finally { env.store.close(); }
@@ -292,11 +323,11 @@ describe('unified reference search', () => {
     try {
       const masterOnly = searchGameData(env.master, null, '4470', []);
       assert.equal(masterOnly.available, true);
-      assert.equal(masterOnly.hits[0]!.records[0]!.source, 'forevermaster');
+      assert.equal(masterOnly.hits[0]!.records[0]!.source, 'foreverdb');
       assert.ok(masterOnly.limitations.some((limitation) => limitation.startsWith('questiedb_unavailable')));
       const questieOnly = searchGameData(null, env.questie, '2', ['quest']);
       assert.equal(questieOnly.available, true);
-      assert.equal(questieOnly.limitations.length, 0, 'ForeverMaster is irrelevant to quest-only searches');
+      assert.equal(questieOnly.limitations.length, 0, 'ForeverDB is irrelevant to quest-only searches');
       assert.equal(searchGameData(null, env.questie, '14293', ['recipe']).available, false);
       assert.equal(searchGameData(null, null, '4470', []).available, false);
       assert.equal(ToolArgs.search_game_data.safeParse({ query: 'x', types: ['search'], cursor: null }).success, false, 'source-specific aliases are not search types');
@@ -349,7 +380,7 @@ describe('unified reference search', () => {
       const lucan = page.services[0]!;
       assert.equal(lucan.id, 1317);
       assert.deepEqual(lucan.trainerGroups, [{ profession: 'Enchanting', classToken: null }]);
-      assert.deepEqual(new Set(lucan.sources.map(({ source }) => source)), new Set(['forevermaster', 'questiedb']));
+      assert.deepEqual(new Set(lucan.sources.map(({ source }) => source)), new Set(['foreverdb', 'questiedb']));
       assert.deepEqual([lucan.x, lucan.y], [53, 74.5]);
       assert.deepEqual(lucan.alternateLocations.map(({ x, y }) => [x, y]), [[52.9, 74.4]]);
       assert.ok(page.limitations.some((limitation) => limitation.startsWith('other_faction_hidden')));
@@ -362,6 +393,39 @@ describe('unified reference search', () => {
       assert.equal(ToolArgs.find_services.safeParse({ ...filter, service: 'auctioneer', forCharacter: null, cursor: null }).success, false);
       assert.equal(ToolArgs.get_game_record.safeParse({ type: 'item', id: null, recordKey: 'items/4470', fields: [] }).success, false);
     } finally { env.store.close(); }
+  });
+
+  it('keeps local unpriced purchases with separate quote evidence and funding estimates', async () => {
+    const env = await references();
+    const model = new ControlledModel();
+    const bridge = new Bridge({ ...env, adapter: model, datasetId: () => env.master.datasetId });
+    try {
+      assert.equal((await env.manager.importArchive(questieZip(), importMeta)).status, 'activated');
+      env.master.dataset.vendorOffers!['4470'] = [{ itemId: 4470, npcId: 1317, priceCopper: 38, stack: 1, limited: 0, source: 'unknown' }];
+      env.master.dataset.vendorOffers!['10938'] = [{ itemId: 10938, npcId: 1317, priceCopper: 800, stack: 1, limited: 2, source: 'unknown' }];
+      const q = env.manager.source!;
+      q.dataset.entities.item['10938'] = { ...q.dataset.entities.item['4470']!, id: 10938, name: 'Lesser Magic Essence', fields: { vendors: [54] } };
+      const addon = new AddonSession(identity());
+      const { message, key } = addon.query('Craft a wand');
+      assert.equal(bridge.receive(message).status, 'accepted');
+      const input = model.last().input;
+      const hub = new ToolChannelHub({ ...env, datasets: { sourceFor: () => env.master } });
+      const channel: Parameters<ToolChannelHub['handle']>[0] = {
+        ctx: { ...input, request: key }, questie: q, token: Buffer.alloc(32), server: createServer(), sockets: new Set(),
+        cursors: new Map(), abort: new AbortController(), chain: Promise.resolve(),
+      };
+      const call = (tool: ToolName, args: unknown) => hub.handle(channel, randomId(), tool, ToolArgs[tool].parse(args));
+      const recipe = await call('get_game_record', { type: 'recipe', id: 14293, recordKey: null, fields: [] });
+      const result = await call('plan_craft', { recipeRefId: (recipe.data as { recipeRefId: string }).recipeRefId, desiredQuantity: 1, inventoryScope: 'none', maxDepth: 3, lookupPrices: false });
+      assert.equal(result.status, 'ok', result.limitations.join('; '));
+      const data = result.data as { totalCostCopper: number; prices: { buyer: string; purchaseAt: { npcId: number }; priceBasis: string; vendor: null; referenceQuote: { npcId: number } }[]; funding: { buyer: string; knownMoneyCopper: number; shortfallCopper: number; estimated: boolean }[] };
+      assert.equal(data.totalCostCopper, 838);
+      assert.ok(data.prices.every((price) => price.buyer === 'Tester' && price.purchaseAt.npcId === 54 && price.priceBasis === 'reference_estimate' && price.vendor === null && price.referenceQuote.npcId === 1317));
+      assert.deepEqual(data.funding.map((row) => [row.buyer, row.knownMoneyCopper, row.shortfallCopper, row.estimated]), [['Tester', 12345, 0, true]]);
+      const kinds = result.evidenceIds.flatMap((id) => env.store.rawQuery<{ source_kind: string }>('SELECT source_kind FROM evidence WHERE evidence_id = ?', id)).map((row) => row.source_kind);
+      assert.ok(kinds.includes('questiedb') && kinds.includes('foreverdb') && kinds.includes('calculation'));
+      assert.ok(result.evidenceIds.every((id) => env.store.isEvidenceLinked([input.attemptId], id)));
+    } finally { await bridge.shutdown(); env.store.close(); }
   });
 
   it('issues usable item and complete recipe refs through the common getter and leaves live tools separate', async () => {
@@ -397,6 +461,12 @@ describe('unified reference search', () => {
       const lucan = (services.data as { services: { id: number; locationRefId: string }[] }).services.find(({ id }) => id === 1317)!;
       const point = env.store.getVerifiedRef(lucan.locationRefId)!;
       assert.equal(JSON.parse(point.body_json).mapKey, 'uiMap:1453');
+      withVendorOffers(env);
+      const offers = await call('find_services', { service: 'vendor', profession: null, classToken: null, itemId: 4470, zoneName: 'Stormwind City', forCharacter: null, cursor: null });
+      const vendor = (offers.data as { services: { id: number; vendorPriceCopper?: number; vendorStack?: number }[] }).services.find(({ id }) => id === 54)!;
+      assert.deepEqual([vendor.vendorPriceCopper, vendor.vendorStack], [100, 5]);
+      assert.ok(offers.evidenceIds.every((id) => env.store.isEvidenceLinked([input.attemptId], id)));
+      assert.ok(offers.evidenceIds.some((id) => env.store.rawQuery<{ source_kind: string }>('SELECT source_kind FROM evidence WHERE evidence_id = ?', id)[0]!.source_kind === 'foreverdb'));
       assert.equal((await call('find_services', { service: 'trainer', profession: null, classToken: null, itemId: null, zoneName: null, forCharacter: 'Nobody', cursor: null })).status, 'not_found');
       assert.ok(TOOL_NAMES.includes('lookup_prices') && TOOL_NAMES.includes('lookup_items'));
       assert.deepEqual(TOOL_NAMES.filter((name) => name.startsWith('get_') && !['get_source_status', 'get_alts'].includes(name)), ['get_game_record']);

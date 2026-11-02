@@ -1,8 +1,8 @@
 // Dataset search index: record names/notes and names from Search.
 // Normalize NFKC, lowercase, fold Cyrillic yo to e and collapse whitespace. Rank by
 // exact ID -> exact name -> prefix -> substring; break ties by type/recordKey.
-import type { DatasetType, DecodedDataset, DatasetRecord, RecipeRecord, TrainerRecord } from './decode.js';
-import type { LiteralValue } from './parse.js';
+import type { DatasetType, DecodedDataset, DatasetRecord, RecipeRecord, TrainerRecord } from './types.js';
+import type { LiteralValue } from './lua.js';
 
 export interface IndexEntry {
   type: DatasetType;

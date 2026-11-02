@@ -195,7 +195,7 @@ export interface PriceObservationInsert {
 }
 
 export interface DatasetRow {
-  source_kind: 'forevermaster' | 'questiedb';
+  source_kind: 'foreverdb' | 'questiedb';
   dataset_id: string;
   archive_sha256: string;
   decoder_version: number;
@@ -293,7 +293,12 @@ export class Store {
   private static openOnce(options: StoreOptions): Store {
     mkdirSync(dirname(options.path), { recursive: true });
     const schemaPath = options.schemaPath ?? resourcePath('bridge', 'src', 'storage', 'schema.sql');
-    const steps = loadSchemaSteps(schemaPath, join(dirname(schemaPath), 'migrations'));
+    let steps: ReturnType<typeof loadSchemaSteps>;
+    try {
+      steps = loadSchemaSteps(schemaPath, join(dirname(schemaPath), 'migrations'));
+    } catch (error) {
+      throw new StoreError('schema_rejected', `cannot load released schema: ${(error as Error).message}`, { cause: error });
+    }
     let db: DatabaseSync;
     try {
       db = new DatabaseSync(options.path, { enableForeignKeyConstraints: true, timeout: 2500 });
@@ -1143,7 +1148,7 @@ export class Store {
   }
 
   // -------------------------------------------------------------------------
-  // ForeverMaster datasets: candidate -> active | rejected; previous active -> retired.
+  // Reference datasets: candidate -> active | rejected; previous active -> retired per source.
 
   /** Candidate: importing the same datasetId again after a crash starts over. */
   upsertCandidateDataset(row: {
@@ -1174,7 +1179,7 @@ export class Store {
       row.archivePath,
       row.indexPath,
       row.now,
-      row.sourceKind ?? 'forevermaster',
+      row.sourceKind ?? 'foreverdb',
     );
   }
 
@@ -1182,7 +1187,7 @@ export class Store {
     return this.get<DatasetRow>('SELECT * FROM datasets WHERE dataset_id = ?', datasetId);
   }
 
-  getActiveDataset(sourceKind: DatasetRow['source_kind'] = 'forevermaster'): DatasetRow | undefined {
+  getActiveDataset(sourceKind: DatasetRow['source_kind'] = 'foreverdb'): DatasetRow | undefined {
     return this.get<DatasetRow>(`SELECT * FROM datasets WHERE status = 'active' AND source_kind = ?`, sourceKind);
   }
 

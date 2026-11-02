@@ -1,11 +1,11 @@
 // Crafting plan with intermediate products (plan_craft). Code performs arithmetic:
-// first consume character inventory, then craft missing materials with a recipe
-// one character knows, or buy them, whichever costs less at known prices.
+// first consume inventory across all characters, then craft or buy what is missing.
+// Missing materials are bought by their consumer unless local availability requires help.
 // Round craft counts up at each level; keep surplus output in inventory
 // to satisfy other branches. Bound recursion depth and reject item cycles
 // on the current path. An unknown price is not zero.
-import type { RecipeRecord } from '../sources/forevermaster/decode.js';
-import type { PriceChoice } from './pricing.js';
+import type { RecipeRecord } from '../sources/foreverdb/decode.js';
+import { purchasePrice, type PriceChoice, type PurchasePrice } from './pricing.js';
 
 export class CraftPlanError extends Error {}
 
@@ -34,11 +34,14 @@ export interface PlanInput {
   recipesByOutput: ReadonlyMap<number, readonly RecipeRecord[]>;
   /** Character inventory from bags, bank and mail; empty means ignore inventory. */
   stock: ReadonlyMap<string, ReadonlyMap<number, number>>;
-  /** Buyer: the current character. */
+  /** Current character: recipient of the result and fallback buyer for unassigned crafts. */
   buyer: string;
   crafters: Crafters;
   prices: ReadonlyMap<number, PriceChoice>;
+  purchaseFor?(itemId: number, quantity: number, preferredBuyer: string): PlanPurchase;
 }
+
+export interface PlanPurchase extends PurchasePrice { buyer: string }
 
 export interface PlanStep {
   recipeSpellId: number;
@@ -55,12 +58,15 @@ export interface PlanStep {
 
 export interface CraftPlan {
   steps: PlanStep[];
-  buy: { itemId: number; quantity: number; unitPriceCopper: number | null; totalCopper: number | null }[];
+  buy: { itemId: number; quantity: number; buyer: string; unitPriceCopper: number | null; totalCopper: number | null }[];
   fromInventory: { itemId: number; quantity: number; from: { name: string; quantity: number }[] }[];
   transfers: { itemId: number; quantity: number; from: string; to: string }[];
   leftovers: { itemId: number; quantity: number; holder: string | null }[];
   totalCostCopper: number | null;
   unpricedItemIds: number[];
+  prices: PlanPurchase[];
+  purchaseTotals: { buyer: string; totalCostCopper: number | null; unpricedItemIds: number[]; estimated: boolean }[];
+  craftAlternatives: { itemId: number; quantity: number; recipeSpellId: number; crafter: string; estimatedCostCopper: number | null; reason: string }[];
   limitations: string[];
 }
 
@@ -79,10 +85,11 @@ const NO_HOLDER = '';
 
 class Planner {
   readonly steps: PlanStep[] = [];
-  readonly buy = new Map<number, number>();
+  readonly buy = new Map<string, { itemId: number; quantity: number; buyer: string }>();
   readonly used = new Map<number, Map<string, number>>();
   readonly transfers = new Map<string, { itemId: number; quantity: number; from: string; to: string }>();
   readonly limitations = new Set<string>();
+  readonly craftAlternatives: CraftPlan['craftAlternatives'] = [];
 
   constructor(
     private readonly input: PlanInput,
@@ -91,17 +98,14 @@ class Planner {
     private readonly dry: boolean,
   ) {}
 
-  private price(itemId: number): number | null {
-    return this.input.prices.get(itemId)?.priceCopper ?? null;
-  }
-
   /**
    * Prefer a character who knows the recipe; otherwise use sufficient profession skill
    * for trainer recipes. Recipe items are allowed only for the top-level recipe;
    * the plan does not propose buying patterns for intermediate products.
    */
-  crafterOf(recipe: RecipeRecord, top = false): { name: string; learn: LearnState } | null {
-    const known = this.input.crafters.knownBy(recipe)[0];
+  crafterOf(recipe: RecipeRecord, top = false, preferred: string | null = null): { name: string; learn: LearnState } | null {
+    const crafters = this.input.crafters.knownBy(recipe);
+    const known = preferred !== null && crafters.includes(preferred) ? preferred : crafters[0];
     if (known !== undefined) return { name: known, learn: 'known' };
     if (recipe.taughtByItemId !== null && !top) return null;
     const learner = this.input.crafters.learnableBy(recipe)[0];
@@ -117,9 +121,12 @@ class Planner {
     );
   }
 
-  /** Consume inventory from the consumer first, then the buyer, then other characters. */
-  private take(itemId: number, quantity: number, consumer: string | null): number {
-    const order = [consumer, this.input.buyer, ...[...this.stock.keys()].sort()].filter((n, i, a): n is string => n !== null && a.indexOf(n) === i);
+  /** Owned stock always comes before purchases. Larger remote stacks reduce letters. */
+  take(itemId: number, quantity: number, consumer: string | null): number {
+    const others = [...this.stock.keys()].filter((name) => name !== consumer).sort((a, b) =>
+      (this.stock.get(b)?.get(itemId) ?? 0) - (this.stock.get(a)?.get(itemId) ?? 0) ||
+      Number(b === this.input.buyer) - Number(a === this.input.buyer) || a.localeCompare(b));
+    const order = consumer === null ? others : [consumer, ...others];
     let left = quantity;
     for (const name of order) {
       const items = this.stock.get(name);
@@ -160,16 +167,29 @@ class Planner {
     return run(new Planner(this.input, cloneStock(this.stock), true));
   }
 
+  purchase(itemId: number, quantity: number, buyer: string): PlanPurchase {
+    return this.input.purchaseFor?.(itemId, quantity, buyer) ?? { ...purchasePrice(itemId, quantity, this.input.prices.get(itemId)), buyer };
+  }
+
   /** Provide quantity of an item to a consumer; return purchase cost, or null if unknown. */
   need(itemId: number, quantity: number, depth: number, path: ReadonlySet<number>, consumer: string | null): number | null {
     const remaining = quantity - this.take(itemId, quantity, consumer);
     if (remaining === 0) return 0;
-    const buyPrice = this.price(itemId);
-    const buyCost = buyPrice === null ? null : safe(buyPrice * remaining);
+    const price = this.purchase(itemId, remaining, consumer ?? this.input.buyer);
+    const buyCost = price.totalCopper === null ? null : safe(price.totalCopper);
 
     let best: { recipe: RecipeRecord; cost: number | null } | null = null;
     for (const recipe of this.candidates(itemId, depth, path)) {
       const cost = this.trial((p) => p.craft(recipe, remaining, depth, path, consumer));
+      const crafter = this.crafterOf(recipe, false, consumer)?.name;
+      const localPurchase = price.local && !price.limitations.some((l) => l.startsWith('vendor_restock_required:'));
+      if (localPurchase && consumer !== null && crafter !== undefined && crafter !== consumer && cost !== 0) {
+        if (!this.dry && this.craftAlternatives.length < PLAN_LIMITS.steps && (buyCost === null || cost !== null && cost < buyCost)) {
+          this.craftAlternatives.push({ itemId, quantity: remaining, recipeSpellId: recipe.spellId, crafter, estimatedCostCopper: cost,
+            reason: 'requires_another_character: optional alternative to a local purchase' });
+        }
+        continue;
+      }
       if (!best || (cost !== null && (best.cost === null || cost < best.cost))) best = { recipe, cost };
     }
     // If both costs are known, choose the cheaper; if one is known, choose it; otherwise craft.
@@ -179,8 +199,10 @@ class Planner {
     if (craft) return this.craft(best!.recipe, remaining, depth, path, consumer);
 
     if (!this.dry) {
-      this.buy.set(itemId, safe((this.buy.get(itemId) ?? 0) + remaining));
-      this.transfer(itemId, remaining, this.input.buyer, consumer);
+      const key = `${price.buyer}|${itemId}`;
+      const previous = this.buy.get(key);
+      this.buy.set(key, { itemId, buyer: price.buyer, quantity: safe((previous?.quantity ?? 0) + remaining) });
+      this.transfer(itemId, remaining, price.buyer, consumer);
     }
     return buyCost;
   }
@@ -188,7 +210,7 @@ class Planner {
   craft(recipe: RecipeRecord, quantity: number, depth: number, path: ReadonlySet<number>, consumer: string | null): number | null {
     const outputItemId = recipe.outputItemId;
     const crafts = outputItemId === null ? quantity : Math.ceil(quantity / recipe.outputCount);
-    const who = this.crafterOf(recipe, depth === 0);
+    const who = this.crafterOf(recipe, depth === 0, depth === 0 ? null : consumer);
     const crafter = who?.name ?? null;
     const nextPath = new Set(path);
     if (outputItemId !== null) nextPath.add(outputItemId);
@@ -255,12 +277,13 @@ export function planCraft(input: PlanInput): CraftPlan {
   const planner = new Planner(input, stock, false);
   const top = input.recipe;
   const path = new Set(top.outputItemId === null ? [] : [top.outputItemId]);
-  planner.craft(top, input.desiredQuantity, 0, path, null);
+  const ownedOutput = top.outputItemId === null ? 0 : planner.take(top.outputItemId, input.desiredQuantity, input.buyer);
+  if (ownedOutput < input.desiredQuantity) planner.craft(top, input.desiredQuantity - ownedOutput, 0, path, input.buyer);
 
   const limitations = new Set<string>();
   if (top.outputItemId === null) limitations.add('effect_applications: the count is effect applications, not created items');
-  if (!input.crafters.knowledge) limitations.add('recipe_knowledge_unknown: the recipes of the characters are not known; intermediate crafts have no assigned character');
-  else if (planner.crafterOf(top, true) === null) limitations.add('top_recipe_unknown: no character has this recipe or the profession at its skill');
+  if (planner.steps.length && !input.crafters.knowledge) limitations.add('recipe_knowledge_unknown: the recipes of the characters are not known; intermediate crafts have no assigned character');
+  else if (planner.steps.length && planner.crafterOf(top, true) === null) limitations.add('top_recipe_unknown: no character has this recipe or the profession at its skill');
   if (planner.steps.some((s) => s.learn === 'trainer')) {
     limitations.add('learn_first: some steps use a trainer recipe the character may still need to learn (its recipe list was not confirmed)');
   }
@@ -269,16 +292,24 @@ export function planCraft(input: PlanInput): CraftPlan {
   }
   if (input.stock.size === 0) limitations.add('inventory_not_used');
 
-  const buy = [...planner.buy].sort(([a], [b]) => a - b).map(([itemId, quantity]) => {
-    const unit = input.prices.get(itemId)?.priceCopper ?? null;
-    for (const l of input.prices.get(itemId)?.limitations ?? []) limitations.add(l);
-    return { itemId, quantity, unitPriceCopper: unit, totalCopper: unit === null ? null : safe(unit * quantity) };
+  const prices = [...planner.buy.values()].sort((a, b) => a.itemId - b.itemId || a.buyer.localeCompare(b.buyer))
+    .map(({ itemId, quantity, buyer }) => planner.purchase(itemId, quantity, buyer));
+  const buy = prices.map((price) => {
+    for (const l of price.limitations) limitations.add(l);
+    return { itemId: price.itemId, quantity: price.quantity, buyer: price.buyer, unitPriceCopper: price.unitPriceCopper, totalCopper: price.totalCopper === null ? null : safe(price.totalCopper) };
   });
   const unpricedItemIds = buy.filter((b) => b.unitPriceCopper === null).map((b) => b.itemId);
   const priced = buy.filter((b) => b.totalCopper !== null);
   let total = 0;
   for (const b of priced) total = safe(total + b.totalCopper!);
   if (unpricedItemIds.length > 0 && priced.length > 0) limitations.add('price_total_incomplete: the total excludes some items');
+  const purchaseTotals = [...new Set(prices.map((price) => price.buyer))].map((buyer) => {
+    const rows = prices.filter((price) => price.buyer === buyer);
+    const known = rows.filter((price) => price.totalCopper !== null);
+    return { buyer, totalCostCopper: known.length ? known.reduce((sum, price) => safe(sum + safe(price.totalCopper!)), 0) : null,
+      unpricedItemIds: [...new Set(rows.filter((price) => price.totalCopper === null).map((price) => price.itemId))],
+      estimated: rows.some((price) => price.priceBasis === 'reference_estimate') };
+  });
 
   const leftovers: CraftPlan['leftovers'] = [];
   for (const step of planner.steps) {
@@ -304,6 +335,9 @@ export function planCraft(input: PlanInput): CraftPlan {
     leftovers,
     totalCostCopper: buy.length === 0 ? 0 : priced.length > 0 ? total : null,
     unpricedItemIds,
+    prices,
+    purchaseTotals,
+    craftAlternatives: planner.craftAlternatives,
     limitations: [...limitations],
   };
 }

@@ -2,14 +2,14 @@
 // state to ForeverAssistantDB.alts (Collectors/Alts.lua); the client saves the file
 // on logout and /reload. While another character is active, saved alt data remains
 // unchanged, so the file holds the last saved state. Do not execute Lua: reuse
-// the bounded literal parser from ForeverMaster. The current character comes from
+// the shared bounded literal parser. The current character comes from
 // the question snapshot (tool-channel.ts); the file adds its bank, mail and recipes.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { ID, Identity, N, S, S0, type Identity as IdentityType } from '../contracts.js';
 import { characterKeyOf } from '../ids.js';
-import { LuaDataError, parseSavedVariables, type LiteralValue } from './forevermaster/parse.js';
+import { LuaDataError, parseSavedVariables, type LiteralValue } from './shared/lua.js';
 
 export const SAVED_VARIABLES_FILE = 'ForeverAssistant.lua';
 export const SAVED_VARIABLES_NAME = 'ForeverAssistantDB';

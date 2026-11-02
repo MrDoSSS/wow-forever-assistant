@@ -16,10 +16,10 @@ import { GROUP_NAMES, MESSAGE_KINDS } from '../bridge/src/contracts.js';
 import { MemoryDiagnostics } from '../bridge/src/diagnostics.js';
 import { characterKeyOf, randomId } from '../bridge/src/ids.js';
 import { resourcePath } from '../bridge/src/paths.js';
-import { DatasetManager } from '../bridge/src/sources/forevermaster/update.js';
+import { DatasetManager } from '../bridge/src/sources/foreverdb/update.js';
 import { Store } from '../bridge/src/storage/store.js';
 import { SlotPool } from '../bridge/src/transport/delivery.js';
-import { syntheticForeverMasterArchive } from '../tests/forevermaster-fixture.js';
+import { foreverdbZip } from '../tests/foreverdb-update-fixture.js';
 
 const line = (ok: boolean | null, label: string, detail = '') =>
   console.log(`${ok === null ? '[ ? ]' : ok ? '[ok ]' : '[!! ]'} ${label}${detail ? ` — ${detail}` : ''}`);
@@ -80,7 +80,7 @@ async function liveCodex(codexPath: string): Promise<boolean> {
   const diag = new MemoryDiagnostics(systemClock);
   const store = Store.open({ path: join(dir, 'assistant.sqlite'), clock: systemClock });
   const datasets = new DatasetManager({ store, cacheDir: join(dir, 'cache'), clock: systemClock, diag, fetcher: () => Promise.reject(new Error('offline')) });
-  const imported = await datasets.importArchive(syntheticForeverMasterArchive(), { etag: null, lastModified: null });
+  const imported = await datasets.importArchive(foreverdbZip(), { etag: null, lastModified: null });
   if (imported.status !== 'activated') throw new Error(`Synthetic diagnostic dataset import failed: ${JSON.stringify(imported)}`);
   const channels = new ToolChannelHub({ store, clock: systemClock, diag, datasets: { sourceFor: (id) => datasets.sourceFor(id) } });
   const events: { turn: number; event: Record<string, unknown> }[] = [];

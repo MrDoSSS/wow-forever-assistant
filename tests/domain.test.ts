@@ -8,13 +8,7 @@ import { choosePrice, type PriceChoice } from '../bridge/src/domain/pricing.js';
 import { FONT_RANGES, fitFont } from '../bridge/src/domain/glyphs.js';
 import { checkTextMarkers, historyTextOf } from '../bridge/src/domain/reply.js';
 import { resourcePath } from '../bridge/src/paths.js';
-import { decodeRecipe, type RecipeRecord } from '../bridge/src/sources/forevermaster/decode.js';
-
-function recipe(line: string, spellId = '100', profession = 'Tailoring'): RecipeRecord {
-  const decoded = decodeRecipe(profession, spellId, line);
-  assert.ok(typeof decoded !== 'string', decoded as string);
-  return decoded;
-}
+import type { RecipeRecord } from '../bridge/src/sources/shared/types.js';
 
 function bags(slots: [number, number][], coverage: 'complete' | 'partial' = 'complete'): Inventory {
   const value = slots.map(([itemId, count], i) => ({ bag: 0, slot: i + 1, item: { itemId, itemLink: null }, count }));
@@ -54,7 +48,7 @@ const prices = (...choices: PriceChoice[]) => new Map(choices.map((c) => [c.item
 
 describe('craft calculation', () => {
   // Second Linen recipe: 2 output items per craft, using 2996x2 and 2320x2.
-  const linen = recipe('10|45||70|4307|2|4345|n|2996,2320:2,2996', '3915');
+  const linen: RecipeRecord = {spellId:3915,profession:'Tailoring',learn:10,yellow:45,green:57,grey:70,greenDerived:true,outputItemId:4307,outputCount:2,taughtByItemId:4345,status:'new',reagents:[{itemId:2996,count:2},{itemId:2320,count:2}],limitations:[]};
 
   it('rounds crafts up by output count and counts missing reagents from complete bags', () => {
     const result = calculateCraft({ recipe: linen, desiredQuantity: 20, inventory: bags([[2996, 7], [2320, 30], [2996, 1]]), prices: new Map() });
@@ -78,7 +72,7 @@ describe('craft calculation', () => {
   });
 
   it('treats an effect without an output item as a number of applications', () => {
-    const enchant = recipe('1|70||110|||||10940:2,10938', '7418', 'Enchanting');
+    const enchant: RecipeRecord = {...linen,spellId:7418,profession:'Enchanting',outputItemId:null,outputCount:1,reagents:[{itemId:10940,count:2},{itemId:10938,count:1}]};
     const result = calculateCraft({ recipe: enchant, desiredQuantity: 3, inventory: { scope: 'none' }, prices: new Map() });
     assert.equal(result.crafts, 3);
     assert.deepEqual(result.lines.map((l) => l.needed), [6, 3]);
@@ -117,7 +111,7 @@ describe('craft calculation', () => {
   });
 
   it('refuses unsafe arithmetic and bad quantities', () => {
-    const huge = recipe(`1|1||1|5|1|||7:${Number.MAX_SAFE_INTEGER}`);
+    const huge: RecipeRecord = {...linen,outputItemId:5,outputCount:1,reagents:[{itemId:7,count:Number.MAX_SAFE_INTEGER}]};
     assert.throws(() => calculateCraft({ recipe: huge, desiredQuantity: 2, inventory: { scope: 'none' }, prices: new Map() }), CraftLimitError);
     assert.throws(() => calculateCraft({ recipe: linen, desiredQuantity: 0, inventory: { scope: 'none' }, prices: new Map() }), CraftLimitError);
   });

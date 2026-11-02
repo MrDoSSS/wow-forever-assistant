@@ -1,9 +1,9 @@
--- Working database baseline v4. A new database is created in one transaction
--- with schema_migrations and user_version=4, followed by registered migrations.
+-- Working database baseline v5. A new database is created in one transaction
+-- with schema_migrations and user_version=5, followed by registered migrations.
 -- Older unsupported versions are rejected without replacing the database.
 -- Each released SQL file has a checksum; subsequent schema changes belong
 -- in a new migration file, never in this baseline.
--- Independent ForeverMaster and QuestieDB datasets share evidence registration.
+-- Independent ForeverDB and QuestieDB datasets share evidence registration.
 --
 -- Types: IDs, enums and JSON text use TEXT; UTC milliseconds and counters use INTEGER;
 -- bytes and JSONB use BLOB. All tables are STRICT.
@@ -95,7 +95,7 @@ CREATE INDEX received_messages_by_chat ON received_messages (character_key, conv
 
 CREATE TABLE datasets (
   dataset_id TEXT PRIMARY KEY CHECK (length(dataset_id) = 32),
-  source_kind TEXT NOT NULL CHECK (source_kind IN ('forevermaster', 'questiedb')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('foreverdb', 'questiedb')),
   archive_sha256 TEXT NOT NULL CHECK (length(archive_sha256) = 64),
   decoder_version INTEGER NOT NULL CHECK (decoder_version >= 1),
   source_url TEXT NOT NULL,
@@ -231,7 +231,7 @@ CREATE INDEX deliveries_by_chat ON deliveries (character_key, conversation_id);
 
 CREATE TABLE evidence (
   evidence_id TEXT PRIMARY KEY CHECK (length(evidence_id) = 32),
-  source_kind TEXT NOT NULL CHECK (source_kind IN ('forevermaster', 'questiedb', 'calculation', 'auctionator', 'client')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('foreverdb', 'questiedb', 'calculation', 'auctionator', 'client')),
   source_url TEXT,
   dataset_id TEXT REFERENCES datasets (dataset_id),
   record_key TEXT,

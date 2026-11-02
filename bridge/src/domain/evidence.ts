@@ -5,7 +5,7 @@
 import { randomId, sha256Hex } from '../ids.js';
 import type { Store, VerifiedRefRow } from '../storage/store.js';
 
-export type EvidenceSourceKind = 'forevermaster' | 'questiedb' | 'calculation' | 'auctionator' | 'client';
+export type EvidenceSourceKind = 'foreverdb' | 'questiedb' | 'calculation' | 'auctionator' | 'client';
 
 export interface EvidenceInput {
   attemptId: string;

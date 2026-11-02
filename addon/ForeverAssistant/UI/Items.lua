@@ -36,7 +36,7 @@ function Items.linkFor(ref)
   return "|cffffffff|Hitem:" .. ref.itemId .. "|h[item " .. ref.itemId .. "]|h|r"
 end
 
--- Map link: green if verified, orange and labeled if unverified;
+-- Map link: green if verified, orange if unverified;
 -- adjacent [Track] activates the client's waypoint.
 function Items.mapLink(entryId, point, pointIndex)
   local label = FA.Map.label(point)
@@ -44,7 +44,7 @@ function Items.mapLink(entryId, point, pointIndex)
   local target = entryId .. (pointIndex and (":" .. pointIndex) or "")
   local track = " |cff40c0ff|H" .. TRACK_LINK .. target .. "|h[Track]|h|r"
   if point.verified then return "|cff66ff66|H" .. MAP_LINK .. target .. "|h[" .. label .. "]|h|r" .. track end
-  return "|cffff9933|H" .. MAP_LINK .. target .. "|h[" .. label .. "]|h|r |cff888888(not verified)|r" .. track
+  return "|cffff9933|H" .. MAP_LINK .. target .. "|h[" .. label .. "]|h|r" .. track
 end
 
 -- Replace [[item:<refId>]] and [[map:<index>]] markers with inline links.

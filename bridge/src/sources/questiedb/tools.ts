@@ -1,5 +1,5 @@
 import { zoneNameOf } from '../zones.js';
-import { normalizeText } from '../forevermaster/search.js';
+import { normalizeText } from '../shared/index.js';
 import { ENTITY_TYPES, type EntityType, type QuestieDataset, type QuestieEntity } from './decode.js';
 import type { DataValue } from './cbor.js';
 

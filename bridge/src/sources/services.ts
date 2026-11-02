@@ -1,10 +1,10 @@
 // Service lookup across the same snapshots as record lookup and search.
-// ForeverMaster supplies trainer specializations; QuestieDB supplies general services.
-import type { ForeverMasterSource } from './forevermaster/tools.js';
-import type { TrainerRecord } from './forevermaster/decode.js';
-import { normalizeText } from './forevermaster/search.js';
+// ForeverDB supplies trainer specializations; QuestieDB supplies general services.
+import type { TrainerRecord, DecodedDataset } from './foreverdb/decode.js';
+import { normalizeText } from './foreverdb/search.js';
 import { type QuestieSource, type ServiceType, type WorldCharacter } from './questiedb/tools.js';
-import { trainerPoint, type ReferencePoint } from './records.js';
+import { trainerPoint, sourceKindOf, type ReferenceSource, type ReferencePoint } from './records.js';
+import { zoneNameOf } from './zones.js';
 
 export interface ServiceFilter {
   service: ServiceType;
@@ -28,17 +28,25 @@ export interface ServicePoint extends ReferencePoint {
   alternateLocations: ReferencePoint[];
   inCharacterZone: boolean;
   distanceOnMap: number | null;
+  /** Static purchase quote; price is for vendorStack items, not a live stock check. */
+  vendorPriceCopper?: number;
+  vendorStack?: number;
+  unitPriceCopper?: number;
+  limitedStock?: number;
+  priceSource?: 'forever' | 'classic' | 'unknown';
 }
 const matchesTrainer = (trainer: TrainerRecord, filter: ServiceFilter) =>
   (filter.profession === null || trainer.profession?.toLowerCase() === filter.profession.toLowerCase()) &&
   (filter.classToken === null || trainer.classToken?.toUpperCase() === filter.classToken.toUpperCase());
 
-export function findServices(master: ForeverMasterSource | null, questie: QuestieSource | null, filter: ServiceFilter, who: WorldCharacter, offset = 0) {
+export function findServices(master: ReferenceSource | null, questie: QuestieSource | null, filter: ServiceFilter, who: WorldCharacter, offset = 0) {
   const specialized = filter.profession !== null || filter.classToken !== null;
   const trainer = filter.service === 'trainer';
+  const vendor = filter.service === 'vendor';
+  const vendorData = master?.dataset as DecodedDataset | undefined;
   const limitations: string[] = [];
-  const available = specialized ? master !== null : questie !== null || trainer && master !== null;
-  if (trainer && !master) limitations.push('trainer_specializations_unavailable: ForeverMaster is required to confirm profession or class');
+  const available = specialized ? master !== null : questie !== null || trainer && master !== null || vendor && vendorData?.vendorOffers !== undefined;
+  if (trainer && !master) limitations.push('trainer_specializations_unavailable: ForeverDB is required to confirm profession or class');
   if (!questie) limitations.push('questiedb_unavailable');
   if (trainer) limitations.push('trainer_is_candidate: group membership does not prove teaching a particular recipe');
   const faction = who.faction === 'alliance' ? 'A' : who.faction === 'horde' ? 'H' : null;
@@ -46,7 +54,7 @@ export function findServices(master: ForeverMasterSource | null, questie: Questi
   const allowedIds = new Set(eligible.map(({ npcId }) => npcId));
   const groups = new Map<string, ServicePoint>();
   const specializationOf = (id: number) => eligible.filter(({ npcId }) => npcId === id);
-  const add = (point: ReferencePoint, friendly: string | null, factionId: number | null, records: ServiceRecord[]) => {
+  const add = (point: ReferencePoint & Partial<Pick<ServicePoint, 'vendorPriceCopper' | 'vendorStack' | 'unitPriceCopper' | 'limitedStock' | 'priceSource'>>, friendly: string | null, factionId: number | null, records: ServiceRecord[]) => {
     if (filter.zoneName !== null && (point.zoneName === null || normalizeText(point.zoneName) !== normalizeText(filter.zoneName))) return;
     if (faction !== null && friendly !== null && !friendly.includes(faction)) return;
     // Honor known faction metadata from either source, even when the other is missing it.
@@ -71,6 +79,28 @@ export function findServices(master: ForeverMasterSource | null, questie: Questi
       sources: sourceRecords, alternateLocations: [], inCharacterZone, distanceOnMap: distance,
     });
   };
+  if (vendor && master && vendorData?.vendorOffers && vendorData.npcs) {
+    const offers = filter.itemId === null ? Object.values(vendorData.vendorOffers).flat() : vendorData.vendorOffers[String(filter.itemId)] ?? [];
+    for (const offer of offers) {
+      const npc = vendorData.npcs[String(offer.npcId)];
+      if (!npc) continue;
+      const friendly = npc.faction === 'alliance' ? 'A' : npc.faction === 'horde' ? 'H' : null;
+      const zoneName = zoneNameOf(npc.uiMapId);
+      add({
+        source: sourceKindOf(master), type: 'npc', id: npc.id, title: npc.name,
+        uiMapId: npc.uiMapId, zoneName, x: npc.x, y: npc.y,
+        approxLocation: zoneName !== null && npc.x !== null && npc.y !== null
+          ? { title: npc.name, zoneName, x: npc.x, y: npc.y, basis: `ForeverDB vendor record, NPC ${npc.id}`, sourceUrl: master.dataset.pack.site ?? 'https://foreverdb.net' } : null,
+        ...(filter.itemId !== null ? {
+          vendorPriceCopper: offer.priceCopper, vendorStack: offer.stack,
+          unitPriceCopper: offer.priceCopper / offer.stack,
+          limitedStock: offer.limited, priceSource: offer.source,
+        } : {}),
+      }, friendly, null, [{ source: sourceKindOf(master), datasetId: master.datasetId, profession: null, classToken: null }]);
+    }
+    limitations.push('vendor_quote: static price per purchase and stack; current stock, discounts and dynamic requirements are not confirmed');
+    if (offers.some((offer) => offer.priceCopper === 0)) limitations.push('zero_gold_quote: zero copper is not proof of a free purchase; check additional currency or item costs in the reference');
+  }
   if (questie && available) {
     for (const point of questie.findServices(filter.service, filter.itemId, filter.zoneName, who, 0, Infinity).services) {
       if (specialized && !allowedIds.has(point.id)) continue;
@@ -83,7 +113,7 @@ export function findServices(master: ForeverMasterSource | null, questie: Questi
     for (const candidate of eligible) {
       const friendly = candidate.faction === 'alliance' ? 'A' : candidate.faction === 'horde' ? 'H' : null;
       if (faction && friendly && !friendly.includes(faction)) { hidden++; continue; }
-      add(trainerPoint(master, candidate), friendly, null, [{ source: 'forevermaster', datasetId: master.datasetId, profession: candidate.profession, classToken: candidate.classToken }]);
+      add(trainerPoint(master, candidate), friendly, null, [{ source: sourceKindOf(master), datasetId: master.datasetId, profession: candidate.profession, classToken: candidate.classToken }]);
     }
     if (hidden) limitations.push(`other_faction_hidden: ${hidden} trainers of the other faction are omitted`);
   }

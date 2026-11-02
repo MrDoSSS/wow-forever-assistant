@@ -231,7 +231,7 @@ function Map.show(point)
   hookWorldMap()
   openWorldMap(point.mapId)
   Map.refreshPin()
-  Core.ui("setStatus", "Map: " .. Map.label(point) .. (point.verified and "" or " (not verified)"))
+  Core.ui("setStatus", "Map: " .. Map.label(point))
   return true
 end
 
@@ -258,7 +258,7 @@ function Map.track(point)
         if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then Core.try(C_SuperTrack.SetSuperTrackedUserWaypoint, true) end
         Map.active, Map.tracked = point, true
         Map.refreshPin()
-        Core.ui("setStatus", "Tracking: " .. Map.label(point) .. (point.verified and "" or " (not verified)"))
+        Core.ui("setStatus", "Tracking: " .. Map.label(point))
         return true
       end
     end

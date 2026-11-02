@@ -1,9 +1,5 @@
-// Static parsing of ForeverMaster Data/*.lua. Never execute Lua:
-// luaparse builds an AST; accept only literal assignments to
-// ForeverMasterData.<name> and ForeverMasterData.<name>["<string>"] paths.
-// Parse Lua 5.1 strings without changing bytes; validate UTF-8 afterward.
+// Static literal data and SavedVariables parser. No Lua code is executed.
 import luaparse from 'luaparse';
-import { fork } from 'node:child_process';
 
 export type LiteralValue = null | boolean | number | string | LiteralValue[] | { [key: string]: LiteralValue };
 
@@ -59,7 +55,7 @@ class RecordError extends Error {
   }
 }
 
-const ROOT = 'ForeverMasterData';
+const ROOT = 'ns';
 const SHORT_ESCAPES: Record<string, number> = { a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11 };
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -200,18 +196,18 @@ class Converter {
   }
 }
 
-function assignmentPath(variable: Node): string[] | null {
-  if (variable.type === 'MemberExpression' && variable.indexer === '.' && variable.base.type === 'Identifier' && variable.base.name === ROOT) {
+function assignmentPath(variable: Node, root = ROOT): string[] | null {
+  if (variable.type === 'MemberExpression' && variable.indexer === '.' && variable.base.type === 'Identifier' && variable.base.name === root) {
     return [variable.identifier.name];
   }
-  // ForeverMasterData.<name>.<identifier> is equivalent to ["<string>"]; 0.5.0 uses this for leveling.ids.
+  // ns.<name>.<identifier> is equivalent to ["<string>"]; 0.5.0 uses this for leveling.ids.
   if (
     variable.type === 'MemberExpression' &&
     variable.indexer === '.' &&
     variable.base.type === 'MemberExpression' &&
     variable.base.indexer === '.' &&
     variable.base.base.type === 'Identifier' &&
-    variable.base.base.name === ROOT
+    variable.base.base.name === root
   ) {
     return [variable.base.identifier.name, variable.identifier.name];
   }
@@ -221,29 +217,14 @@ function assignmentPath(variable: Node): string[] | null {
     variable.base.type === 'MemberExpression' &&
     variable.base.indexer === '.' &&
     variable.base.base.type === 'Identifier' &&
-    variable.base.base.name === ROOT
+    variable.base.base.name === root
   ) {
     return [variable.base.identifier.name, utf8.decode(decodeLuaString(variable.index.raw))];
   }
   return null;
 }
 
-function isRootInit(statement: luaparse.AssignmentStatement): boolean {
-  const [variable] = statement.variables;
-  const [init] = statement.init;
-  return (
-    variable?.type === 'Identifier' &&
-    variable.name === ROOT &&
-    init?.type === 'LogicalExpression' &&
-    init.operator === 'or' &&
-    init.left.type === 'Identifier' &&
-    init.left.name === ROOT &&
-    init.right.type === 'TableConstructorExpression' &&
-    init.right.fields.length === 0
-  );
-}
-
-export function parseDataFile(bytes: Uint8Array, limits: ParseLimits = PARSE_LIMITS): ParseResult {
+export function parseDataFile(bytes: Uint8Array, limits: ParseLimits = PARSE_LIMITS, format: 'namespace' | 'literal' = 'namespace'): ParseResult {
   const source = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1');
   let nodes = 0;
   let chunk: luaparse.Chunk;
@@ -268,10 +249,16 @@ export function parseDataFile(bytes: Uint8Array, limits: ParseLimits = PARSE_LIM
   const converter = new Converter(limits);
   const assignments: Assignment[] = [];
   for (const statement of chunk.body) {
+    if (format === 'namespace' && statement.type === 'LocalStatement' && statement.variables.length === 2 &&
+      statement.variables[0]?.name === '_' && statement.variables[1]?.name === 'ns' && statement.init.length === 1 && statement.init[0]?.type === 'VarargLiteral') continue;
+    if (format === 'literal' && statement.type === 'ReturnStatement' && chunk.body.length === 1 && statement.arguments.length === 1) {
+      assignments.push({ path: ['returned'], value: converter.value(statement.arguments[0]!, 0, 'returned') });
+      continue;
+    }
     if (statement.type !== 'AssignmentStatement' || statement.variables.length !== 1 || statement.init.length !== 1) {
       throw new LuaDataError('forbidden_construct', statement.type);
     }
-    if (isRootInit(statement)) continue;
+    if (format === 'literal') throw new LuaDataError('forbidden_construct', 'expected one literal return');
     const path = assignmentPath(statement.variables[0]!);
     if (!path) throw new LuaDataError('forbidden_construct', `assignment to ${statement.variables[0]!.type}`);
     let value: LiteralValue;
@@ -333,47 +320,4 @@ export function parseSavedVariables(
     }
   }
   return { values, skips: converter.skips };
-}
-
-// ---------------------------------------------------------------------------
-// Parse in a child process with a parent-owned timeout.
-
-export interface ParserLimits extends ParseLimits {
-  timeoutMs: number;
-}
-
-export const PARSER_LIMITS: ParserLimits = { ...PARSE_LIMITS, timeoutMs: 20_000 };
-
-export function parseInProcess(bytes: Uint8Array, limits: ParserLimits = PARSER_LIMITS): Promise<ParseResult> {
-  return new Promise((resolve, reject) => {
-    const child = fork(new URL('./parse-worker.ts', import.meta.url), [], {
-      execPath: process.execPath,
-      execArgv: ['--no-orphans'],
-      serialization: 'advanced',
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-      windowsHide: true,
-    });
-    let settled = false;
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.kill();
-      fn();
-    };
-    const timer = setTimeout(
-      () => finish(() => reject(new LuaDataError('time_limit', `parsing exceeded ${limits.timeoutMs} ms`))),
-      limits.timeoutMs,
-    );
-    child.on('message', (message: { ok: true; result: ParseResult } | { ok: false; code: LuaDataErrorCode; message: string }) => {
-      finish(() => (message.ok ? resolve(message.result) : reject(new LuaDataError(message.code, message.message))));
-    });
-    child.on('error', (error: Error) => {
-      finish(() => reject(new LuaDataError('syntax', error.message)));
-    });
-    child.on('exit', (code, signal) => finish(() => reject(new LuaDataError('parser_failed', `parser exited with ${signal ?? code}`))));
-    child.send({ bytes, limits }, (error) => {
-      if (error) finish(() => reject(new LuaDataError('syntax', error.message)));
-    });
-  });
 }

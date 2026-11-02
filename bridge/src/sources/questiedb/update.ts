@@ -1,5 +1,5 @@
 // Discover the latest stable GitHub release, import its Forever artifact independently
-// of ForeverMaster, and retain the last working snapshot on any download or decode error.
+// of other references, and retain the last working snapshot on any download or decode error.
 import { fork } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,8 +7,8 @@ import type { Clock } from '../../clock.js';
 import type { Diagnostics } from '../../diagnostics.js';
 import { randomId, sha256Hex } from '../../ids.js';
 import type { Store } from '../../storage/store.js';
-import { ArchiveError, readSelectedArchive } from '../forevermaster/archive.js';
-import { UPDATE_INTERVAL_MS, type UpdateResult } from '../forevermaster/update.js';
+import { ArchiveError, readSelectedArchive } from '../shared/archive.js';
+import { UPDATE_INTERVAL_MS, type UpdateResult } from '../shared/update.js';
 import { httpGet, type Fetcher } from '../web.js';
 import { QuestieDataError } from './cbor.js';
 import { QUESTIE_DECODER_VERSION, type QuestieDataset } from './decode.js';

@@ -1,16 +1,18 @@
 // Common record lookup. Source facts stay separate; item and recipe references
 // are issued by the attempt channel from complete normalized records.
 import type { SearchType } from '../contracts.js';
-import type { RecipeRecord, DatasetType, TrainerRecord } from './forevermaster/decode.js';
-import type { ForeverMasterSource } from './forevermaster/tools.js';
+import type { RecipeRecord, DatasetType, TrainerRecord, DecodedDataset } from './foreverdb/decode.js';
+import type { ForeverDBSource } from './foreverdb/tools.js';
+export type ReferenceSource = ForeverDBSource;
+export const sourceKindOf = (source: ReferenceSource): 'foreverdb' => source.sourceKind;
 import type { DataValue } from './questiedb/cbor.js';
 import type { EntityType } from './questiedb/decode.js';
 import { boundedFields, type QuestieSource } from './questiedb/tools.js';
 import { zoneNameOf } from './zones.js';
-import { FOREVERMASTER_URL } from './forevermaster/update.js';
+import { FOREVERDB_URL } from './foreverdb/update.js';
 
 export interface ReferencePoint {
-  source: 'forevermaster' | 'questiedb';
+  source: 'foreverdb' | 'questiedb';
   type: 'npc' | 'object';
   id: number;
   title: string;
@@ -28,18 +30,18 @@ export interface ReferenceFact {
   sourceUrl: string;
   fields: Record<string, DataValue>;
 }
-export function trainerPoint(source: ForeverMasterSource, trainer: TrainerRecord): ReferencePoint {
+export function trainerPoint(source: ReferenceSource, trainer: TrainerRecord): ReferencePoint {
   const zoneName = zoneNameOf(trainer.uiMapId);
   const x = trainer.x === null ? null : Math.round(trainer.x * 1000) / 10;
   const y = trainer.y === null ? null : Math.round(trainer.y * 1000) / 10;
   return {
-    source: 'forevermaster', type: 'npc', id: trainer.npcId, title: trainer.name, uiMapId: trainer.uiMapId, zoneName, x, y,
+    source: sourceKindOf(source), type: 'npc', id: trainer.npcId, title: trainer.name, uiMapId: trainer.uiMapId, zoneName, x, y,
     approxLocation: zoneName !== null && x !== null && y !== null
-      ? { title: trainer.name, zoneName, x, y, basis: `ForeverMaster trainer record, NPC ${trainer.npcId}`, sourceUrl: source.dataset.pack.site ?? FOREVERMASTER_URL } : null,
+      ? { title: trainer.name, zoneName, x, y, basis: `Trainer record, NPC ${trainer.npcId}`, sourceUrl: source.dataset.pack.site ?? FOREVERDB_URL } : null,
   };
 }
 
-export function getGameRecord(master: ForeverMasterSource | null, questie: QuestieSource | null, args: {
+export function getGameRecord(master: ReferenceSource | null, questie: QuestieSource | null, args: {
   type: SearchType; id: number | null; recordKey: string | null; fields: string[];
 }) {
   const { type, id, recordKey } = args;
@@ -49,10 +51,10 @@ export function getGameRecord(master: ForeverMasterSource | null, questie: Quest
   let recipe: RecipeRecord | null = null;
   let fields: Record<string, DataValue> = {};
   let available = false;
-  const addMaster = (key: string, value: unknown) => facts.push({ source: 'forevermaster', datasetId: master!.datasetId, sourceUrl: master!.dataset.pack.site ?? FOREVERMASTER_URL, recordKey: key, fields: value as Record<string, DataValue> });
+  const addMaster = (key: string, value: unknown) => facts.push({ source: sourceKindOf(master!), datasetId: master!.datasetId, sourceUrl: master!.dataset.pack.site ?? FOREVERDB_URL, recordKey: key, fields: value as Record<string, DataValue> });
   if (type === 'item' || type === 'npc') {
     available = master !== null || questie !== null;
-    if (!master) limitations.push('forevermaster_unavailable');
+    if (!master) limitations.push('foreverdb_unavailable');
     if (!questie) limitations.push('questiedb_unavailable');
   } else if (type === 'quest' || type === 'object') available = questie !== null;
   else available = master !== null;
@@ -72,7 +74,7 @@ export function getGameRecord(master: ForeverMasterSource | null, questie: Quest
         addMaster(`item/${id}`, item.data);
         limitations.push(...item.limitations);
         fields = { ...fields, ...item.data, name: item.data.name ?? fields.name ?? null } as Record<string, DataValue>;
-      } else limitations.push('forevermaster_item_missing: recipe links and change notes are unknown');
+      } else limitations.push('foreverdb_item_missing: recipe links and change notes are unknown');
     } else if (type === 'recipe') {
       const result = master.getRecipe(id!);
       if (result.data) {
@@ -83,12 +85,27 @@ export function getGameRecord(master: ForeverMasterSource | null, questie: Quest
         limitations.push(...result.limitations);
       }
     } else if (type === 'npc') {
+      const dataset = master.dataset as DecodedDataset;
+      const npc = dataset.npcs?.[String(id)];
+      if (npc) {
+        const offers = Object.values(dataset.vendorOffers ?? {}).flat().filter((offer) => offer.npcId === id);
+        const value = { ...npc, vendorOffers: offers };
+        addMaster(`npc/${id}`, value);
+        fields = { ...fields, ...value } as unknown as Record<string, DataValue>;
+        const zoneName = zoneNameOf(npc.uiMapId);
+        locations.push({
+          source: sourceKindOf(master), type: 'npc', id: npc.id, title: npc.name,
+          uiMapId: npc.uiMapId, zoneName, x: npc.x, y: npc.y,
+          approxLocation: zoneName !== null && npc.x !== null && npc.y !== null
+            ? { title: npc.name, zoneName, x: npc.x, y: npc.y, basis: `ForeverDB NPC record, NPC ${npc.id}`, sourceUrl: master.dataset.pack.site ?? FOREVERDB_URL } : null,
+        });
+      }
       const trainers = master.dataset.trainers.filter((trainer) => trainer.npcId === id);
       if (trainers.length) {
         const groups = trainers.map(({ profession, classToken }) => ({ profession, classToken }));
         addMaster(`trainers/npc/${id}`, { name: trainers[0]!.name, trainerGroups: groups, trainerRecords: trainers });
         fields = { ...fields, name: fields.name ?? trainers[0]!.name, trainerGroups: groups };
-        locations.push(...trainers.map((trainer) => trainerPoint(master, trainer)));
+        if (!npc) locations.push(...trainers.map((trainer) => trainerPoint(master, trainer)));
         limitations.push('trainer_is_candidate: group membership does not prove teaching a particular recipe');
       }
     } else if (type !== 'quest' && type !== 'object') {

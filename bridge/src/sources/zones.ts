@@ -1,4 +1,4 @@
-// Classic-era zone names by uiMapID for the English client. ForeverMaster stores
+// Classic-era zone names by uiMapID for the English client. The reference stores
 // only trainer uiMapIDs; names are needed for reply text and ApproxLocation,
 // which the addon matches by zoneName. This alone does not verify a map mapping.
 const ZONES: Record<number, string> = {

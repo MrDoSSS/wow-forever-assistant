@@ -5,8 +5,8 @@
 // Unknown prices are not zero; mark the total incomplete.
 // account includes bags, bank and mail across all account characters (domain/alts.ts).
 import type { SnapshotGroups } from '../contracts.js';
-import type { RecipeRecord } from '../sources/forevermaster/decode.js';
-import type { PriceChoice } from './pricing.js';
+import type { RecipeRecord } from '../sources/foreverdb/decode.js';
+import { purchasePrice, type PriceChoice, type PurchasePrice } from './pricing.js';
 
 export type Inventory =
   | { scope: 'none' }
@@ -26,6 +26,7 @@ export interface CraftResult {
   lines: CraftLine[];
   priceTotalCopper: number | null;
   unpricedItemIds: number[];
+  prices: PurchasePrice[];
   limitations: string[];
 }
 
@@ -83,17 +84,19 @@ export function calculateCraft(input: {
   let total = 0;
   let priced = 0;
   const unpricedItemIds: number[] = [];
+  const purchasePrices: PurchasePrice[] = [];
   for (const line of lines) {
     if (line.missing === 0) continue;
     const choice = prices.get(line.itemId);
-    if (line.missing === null || !choice || choice.priceCopper === null) {
+    const price = line.missing === null ? null : purchasePrice(line.itemId, line.missing, choice);
+    if (price) purchasePrices.push(price);
+    for (const l of price?.limitations ?? choice?.limitations ?? []) limitations.add(l);
+    if (price === null || price.totalCopper === null) {
       unpricedItemIds.push(line.itemId);
-      for (const l of choice?.limitations ?? []) limitations.add(l);
       continue;
     }
-    total = safe(total + safe(choice.priceCopper * line.missing));
+    total = safe(total + safe(price.totalCopper));
     priced++;
-    for (const l of choice.limitations) limitations.add(l);
   }
   if (unpricedItemIds.length > 0 && priced > 0) limitations.add('price_total_incomplete: the total excludes some items');
   return {
@@ -102,6 +105,7 @@ export function calculateCraft(input: {
     lines,
     priceTotalCopper: priced > 0 ? total : null,
     unpricedItemIds,
+    prices: purchasePrices,
     limitations: [...limitations],
   };
 }
