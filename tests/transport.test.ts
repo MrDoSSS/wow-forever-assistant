@@ -360,4 +360,15 @@ describe('capture adapter', () => {
     const decoded = decodePixels(result.image!.rgb, result.image!.width, result.image!.height);
     assert.ok(decoded.ok && Buffer.compare(decoded.frame, frame!) === 0);
   });
+
+  // The game behind other windows: the frame is read from the window, not from the screen.
+  it('captures a frame from a window covered by another one', { skip: !windows || process.env.FA_CAPTURE_SELFTEST !== '1' }, async () => {
+    const [frame] = frameFor('{"text":"covered"}');
+    const file = join(tempDir(), 'field.rgb');
+    writeFileSync(file, framePixels(frame!));
+    const result = await runCaptureScript('powershell.exe', resourcePath('bridge', 'capture.ps1'), ['-SelfTestRgbFile', file, '-SelfTestCovered']);
+    assert.deepEqual([result.status, result.detail], ['ok', 'window']);
+    const decoded = decodePixels(result.image!.rgb, result.image!.width, result.image!.height);
+    assert.ok(decoded.ok && Buffer.compare(decoded.frame, frame!) === 0);
+  });
 });

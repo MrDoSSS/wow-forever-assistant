@@ -1,14 +1,19 @@
 # Capture the ForeverAssistant frame field from the game window's client area.
-# The process is DPI-aware: coordinates and sizes use physical pixels. The field is copied
-# from the screen (CopyFromScreen), so an obscured game window or
-# minimized window is unsupported. Output: JSON lines on stdout:
+# The process is DPI-aware: coordinates and sizes use physical pixels. While the game window
+# is in the foreground the field is copied from the screen (CopyFromScreen); otherwise it is
+# read from the window itself as DWM composes it (PrintWindow with PW_RENDERFULLCONTENT), so a
+# game window behind other windows is still captured. A minimized window is not drawn at all
+# and is reported as minimized. Output: JSON lines on stdout:
 #   {"type":"status","code":"ok|not_configured|process_not_found|window_not_found|minimized|client_too_small|capture_failed","detail":"..."}
 #   {"type":"frame","at":<unix ms>,"width":512,"height":96,"rgb":"<base64 RGB, row-major>"}
-# Emit a frame only when the image changes; emit status only when its code changes.
+# The ok detail names the method: screen or window. Emit a frame only when the image changes;
+# emit status only when its code or detail changes.
 #
 #   capture.ps1 -ProcessName WowB              capture continuously every IntervalMs
 #   capture.ps1 -ProcessName WowB -Once        capture once for diagnostics
 #   capture.ps1 -SelfTestRgbFile field.rgb     display an image in a test window and capture it
+#   capture.ps1 -SelfTestRgbFile field.rgb -SelfTestCovered
+#                                              cover the test window with another one and capture it from the window
 
 param(
   [string]$ProcessName = '',
@@ -19,6 +24,7 @@ param(
   [int]$Height = 96,
   [switch]$Once,
   [string]$SelfTestRgbFile = '',
+  [switch]$SelfTestCovered,
   [int]$ParentPid = 0
 )
 
@@ -42,6 +48,12 @@ public static class FaCapture {
   [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
   [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int command);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+
+  // PW_CLIENTONLY | PW_RENDERFULLCONTENT: the client area as DWM composes it, DirectX content
+  // included, whether or not other windows cover it. DWM serves it without the window's thread.
+  const uint PrintClientFull = 3;
 
   // The first ShowWindow call for a process started with a hidden window receives SW_HIDE
   // from STARTUPINFO; a second call displays the self-test window.
@@ -55,43 +67,63 @@ public static class FaCapture {
     SetProcessDPIAware();
   }
 
-  // Return null on success or an unavailability code.
-  public static string Grab(IntPtr hwnd, int ox, int oy, int w, int h, out byte[] rgb, out string detail) {
+  // Return null on success or an unavailability code; on success detail is the method used.
+  // A window outside the foreground is read through PrintWindow, falling back to the screen
+  // if that fails, unless onlyWindow is set.
+  public static string Grab(IntPtr hwnd, int ox, int oy, int w, int h, bool onlyWindow, out byte[] rgb, out string detail) {
     rgb = null;
     detail = "";
     if (!IsWindow(hwnd)) return "window_not_found";
-    if (IsIconic(hwnd)) return "minimized";
+    if (IsIconic(hwnd)) { detail = "a minimized window is not drawn; restore it, it can stay behind other windows"; return "minimized"; }
     RECT client;
     if (!GetClientRect(hwnd, out client)) return "window_not_found";
     int cw = client.Right - client.Left, ch = client.Bottom - client.Top;
     if (cw < ox + w || ch < oy + h) { detail = cw + "x" + ch; return "client_too_small"; }
-    POINT origin = new POINT();
-    if (!ClientToScreen(hwnd, ref origin)) return "window_not_found";
     try {
+      if (onlyWindow || GetForegroundWindow() != hwnd) {
+        using (Bitmap bmp = new Bitmap(ox + w, oy + h, PixelFormat.Format24bppRgb)) {
+          bool printed;
+          using (Graphics g = Graphics.FromImage(bmp)) {
+            IntPtr hdc = g.GetHdc();
+            try { printed = PrintWindow(hwnd, hdc, PrintClientFull); } finally { g.ReleaseHdc(hdc); }
+          }
+          if (printed) { rgb = Pixels(bmp, ox, oy, w, h); detail = "window"; return null; }
+          if (onlyWindow) { detail = "PrintWindow"; return "capture_failed"; }
+        }
+      }
+      POINT origin = new POINT();
+      if (!ClientToScreen(hwnd, ref origin)) return "window_not_found";
       using (Bitmap bmp = new Bitmap(w, h, PixelFormat.Format24bppRgb)) {
         using (Graphics g = Graphics.FromImage(bmp)) {
           g.CopyFromScreen(origin.X + ox, origin.Y + oy, 0, 0, new Size(w, h), CopyPixelOperation.SourceCopy);
         }
-        BitmapData data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
-        try {
-          byte[] row = new byte[data.Stride];
-          rgb = new byte[w * h * 3];
-          for (int y = 0; y < h; y++) {
-            Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, data.Stride);
-            for (int x = 0; x < w; x++) {
-              int s = x * 3, d = (y * w + x) * 3;
-              rgb[d] = row[s + 2]; rgb[d + 1] = row[s + 1]; rgb[d + 2] = row[s];
-            }
-          }
-        } finally {
-          bmp.UnlockBits(data);
-        }
+        rgb = Pixels(bmp, 0, 0, w, h);
+        detail = "screen";
       }
     } catch (Exception e) {
       detail = e.GetType().Name;
       return "capture_failed";
     }
     return null;
+  }
+
+  // The w x h rectangle at (x0, y0) as row-major RGB.
+  static byte[] Pixels(Bitmap bmp, int x0, int y0, int w, int h) {
+    BitmapData data = bmp.LockBits(new Rectangle(x0, y0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+    try {
+      byte[] row = new byte[w * 3];
+      byte[] rgb = new byte[w * h * 3];
+      for (int y = 0; y < h; y++) {
+        Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, row.Length);
+        for (int x = 0; x < w; x++) {
+          int s = x * 3, d = (y * w + x) * 3;
+          rgb[d] = row[s + 2]; rgb[d + 1] = row[s + 1]; rgb[d + 2] = row[s];
+        }
+      }
+      return rgb;
+    } finally {
+      bmp.UnlockBits(data);
+    }
   }
 
   public static bool Same(byte[] a, byte[] b) {
@@ -158,10 +190,26 @@ if ($SelfTestRgbFile -ne '') {
   $form.Activate()
   $form.Refresh()
   for ($i = 0; $i -lt 30; $i++) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 50 }
+  # Covered: another window hides the test window, as when the game is behind other windows.
+  $cover = $null
+  if ($SelfTestCovered) {
+    $cover = New-Object System.Windows.Forms.Form
+    $cover.Text = 'ForeverAssistant capture self-test cover'
+    $cover.TopMost = $true
+    $cover.StartPosition = 'Manual'
+    $cover.Location = $form.Location
+    $cover.Size = $form.Size
+    $cover.BackColor = [System.Drawing.Color]::FromArgb(128, 128, 128)
+    $cover.Show()
+    [FaCapture]::ShowNormal($cover.Handle)
+    $cover.Activate()
+    for ($i = 0; $i -lt 10; $i++) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 50 }
+  }
   $rgb = $null; $detail = ''
-  $code = [FaCapture]::Grab($form.Handle, $OffsetX, $OffsetY, $Width, $Height, [ref]$rgb, [ref]$detail)
+  $code = [FaCapture]::Grab($form.Handle, $OffsetX, $OffsetY, $Width, $Height, $SelfTestCovered.IsPresent, [ref]$rgb, [ref]$detail)
+  if ($null -ne $cover) { $cover.Close() }
   $form.Close()
-  if ($null -eq $code) { Write-Frame $rgb } else { Write-Status $code $detail }
+  if ($null -eq $code) { Write-Status 'ok' $detail; Write-Frame $rgb } else { Write-Status $code $detail }
   exit 0
 }
 
@@ -189,12 +237,12 @@ while ($true) {
   if ($hwnd -eq [IntPtr]::Zero) {
     $code = 'process_not_found'; $detail = $ProcessName
   } else {
-    $code = [FaCapture]::Grab($hwnd, $OffsetX, $OffsetY, $Width, $Height, [ref]$rgb, [ref]$detail)
+    $code = [FaCapture]::Grab($hwnd, $OffsetX, $OffsetY, $Width, $Height, $false, [ref]$rgb, [ref]$detail)
   }
   $status = if ($null -eq $code) { 'ok' } else { $code }
-  if ($status -ne $lastStatus -or $Once) {
+  if ("$status $detail" -ne $lastStatus -or $Once) {
     Write-Status $status $detail
-    $lastStatus = $status
+    $lastStatus = "$status $detail"
   }
   if ($null -eq $code -and -not [FaCapture]::Same($rgb, $lastFrame)) {
     Write-Frame $rgb
