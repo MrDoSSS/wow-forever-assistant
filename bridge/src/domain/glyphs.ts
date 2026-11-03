@@ -2,6 +2,8 @@
 // The client cannot draw missing glyphs and displays a replacement box. Convert common
 // symbols to ASCII and remove other unsupported characters. The font test
 // (tests/domain.test.ts) verifies the table against the font file; update it if the font changes.
+// Korean and Chinese clients draw the chat with the client's own font (UI/Theme.lua),
+// which adds their script.
 
 /** Code point ranges with glyphs, excluding controls; newline and tab are allowed separately. */
 export const FONT_RANGES: readonly (readonly [number, number])[] = [
@@ -26,8 +28,21 @@ const REPLACEMENTS: Record<string, string> = {
   '★': '*', '☆': '*', '⭐': '*', '▪': '-', '▸': '-', '►': '-', '▶': '-',
 };
 
-function inFont(code: number): boolean {
+const CJK: readonly (readonly [number, number])[] = [
+  [0x3000, 0x30ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xf900, 0xfaff], [0xff00, 0xffef],
+];
+const HANGUL: readonly (readonly [number, number])[] = [[0x1100, 0x11ff], [0x3130, 0x318f], [0xac00, 0xd7a3]];
+
+/** Scripts added by the client font in locales whose chat uses it (keep in sync with UI/Theme.lua). */
+const CLIENT_FONT_SCRIPTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = {
+  koKR: [...HANGUL, ...CJK],
+  zhCN: CJK,
+  zhTW: CJK,
+};
+
+function inFont(code: number, locale: string): boolean {
   if (code === 0x0a || code === 0x09) return true;
+  if (CLIENT_FONT_SCRIPTS[locale]?.some(([start, end]) => code >= start && code <= end)) return true;
   let lo = 0;
   let hi = FONT_RANGES.length - 1;
   while (lo <= hi) {
@@ -40,11 +55,11 @@ function inFont(code: number): boolean {
   return false;
 }
 
-/** Text the addon font can display in full. */
-export function fitFont(text: string): string {
+/** Text the chat font of a client locale can display in full. */
+export function fitFont(text: string, locale = 'enUS'): string {
   let out = '';
   for (const char of text) {
-    if (inFont(char.codePointAt(0)!)) out += char;
+    if (inFont(char.codePointAt(0)!, locale)) out += char;
     else if (char in REPLACEMENTS) out += REPLACEMENTS[char];
   }
   return out;

@@ -273,8 +273,9 @@ export class Scheduler {
     }
 
     const attemptIds = store.listRequestAttempts(input.request).map((a) => a.attempt_id);
-    const check = verifyModelReply(result.output, store, attemptIds);
+    const check = verifyModelReply(result.output, store, attemptIds, input.query.snapshot.locale);
     if (!check.ok) return this.invalid(input, request, check.reason, now);
+    if (check.markdown.length > 0) this.deps.diag.event('reply.markdown_removed', { attemptId: input.attemptId, kinds: check.markdown });
 
     // A delivery must fit in a packet in full; check before saving the answer.
     const reply = check.reply;

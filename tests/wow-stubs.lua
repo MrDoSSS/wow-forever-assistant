@@ -117,7 +117,10 @@ function UnitRace() return "Human", "Human", 1 end
 function UnitLevel() return 12 end
 function UnitFactionGroup() return "Alliance", "Alliance" end
 function GetMoney() return 12345 end
-function GetZoneText() return "Elwynn Forest" end
+-- Client language: WowStub.locale, with zone and map names from WowStub.zoneText and WowStub.mapNames.
+function GetLocale() return WowStub.locale or "enUS" end
+function GetZoneText() return WowStub.zoneText or "Elwynn Forest" end
+STANDARD_TEXT_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 
 local equipment = {
   [1] = { id = 7046, link = "|cff1eff00|Hitem:7046::::::::12:::::::|h[Azure Silk Hood]|h|r" },
@@ -240,7 +243,11 @@ local maps = {
   [1458] = { name = "Undercity", mapType = 3, parentMapID = 1420 },
   [2000] = { name = "Undercity", mapType = 4 }, -- prefer the zone over the same-named dungeon
 }
-C_Map.GetMapInfo = function(id) return maps[id] end
+C_Map.GetMapInfo = function(id)
+  local info, name = maps[id], WowStub.mapNames and WowStub.mapNames[id]
+  if info and name then return { name = name, mapType = info.mapType, parentMapID = info.parentMapID } end
+  return info
+end
 
 -- World coordinates: map rectangle on continent 0 (left, top, width, height).
 local world = {

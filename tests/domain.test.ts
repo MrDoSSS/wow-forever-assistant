@@ -6,6 +6,7 @@ import { calculateCraft, CraftLimitError, type Inventory } from '../bridge/src/d
 import { confirmedMapOf, verifiedLocationOf } from '../bridge/src/domain/locations.js';
 import { choosePrice, type PriceChoice } from '../bridge/src/domain/pricing.js';
 import { FONT_RANGES, fitFont } from '../bridge/src/domain/glyphs.js';
+import { plainText } from '../bridge/src/domain/plaintext.js';
 import { checkTextMarkers, historyTextOf } from '../bridge/src/domain/reply.js';
 import { resourcePath } from '../bridge/src/paths.js';
 import type { RecipeRecord } from '../bridge/src/sources/shared/types.js';
@@ -149,11 +150,10 @@ describe('map points', () => {
       groups: { position: { availability: 'available', coverage: 'complete', observedAtSessionMs: 1, reason: null, value: { mapKey, x: 0.5, y: 0.5, zoneName } } },
     }) as unknown as Snapshot;
 
-  it('confirms a uiMapID only when the client reported it with the same zone name', () => {
+  it('confirms a uiMapID of a known zone whatever the client calls it', () => {
     assert.equal(confirmedMapOf(at('uiMap:1420', 'Tirisfal Glades')), 1420);
-    assert.equal(confirmedMapOf(at('uiMap:1420', ' tirisfal  glades ')), 1420);
-    assert.equal(confirmedMapOf(at('uiMap:1420', 'Brill')), null, 'a subzone name does not confirm the map');
-    assert.equal(confirmedMapOf(at('uiMap:1420', '\u0422\u0438\u0440\u0438\u0441\u0444\u0430\u043b\u044c\u0441\u043a\u0438\u0435 \u043b\u0435\u0441\u0430')), null, 'another client language is not matched');
+    assert.equal(confirmedMapOf(at('uiMap:1420', '\u0422\u0438\u0440\u0438\u0441\u0444\u0430\u043b\u044c\u0441\u043a\u0438\u0435 \u043b\u0435\u0441\u0430')), 1420, 'a client in another language');
+    assert.equal(confirmedMapOf(at('uiMap:1420', '')), 1420, 'the zone name is not needed');
     assert.equal(confirmedMapOf(at('uiMap:9999', 'Tirisfal Glades')), null, 'unknown uiMapID');
     assert.equal(confirmedMapOf(at(null, 'Tirisfal Glades')), null);
     const disabled = { snapshotId: 1, capturedAtSessionMs: 0, groups: { position: { availability: 'disabled', coverage: 'unknown', observedAtSessionMs: null, reason: 'user_disabled', value: null } } };
@@ -279,5 +279,35 @@ describe('text in the addon font', () => {
     assert.equal(fitFont('\u041f\u043e\u0440\u0442\u043d\u044f\u0436\u043d\u043e\u0435 \u0434\u0435\u043b\u043e: 1→75'), '\u041f\u043e\u0440\u0442\u043d\u044f\u0436\u043d\u043e\u0435 \u0434\u0435\u043b\u043e: 1->75');
     assert.equal(fitFont('\u041d\u0430\u0432\u044b\u043a ≥ 50 ≈ 2 \u0447\u0430\u0441\u0430 ✓ ★'), '\u041d\u0430\u0432\u044b\u043a >= 50 ~ 2 \u0447\u0430\u0441\u0430 + *');
     assert.equal(fitFont('\u0413\u043e\u0442\u043e\u0432\u043e 🎉\n\u0434\u0430\u043b\u044c\u0448\u0435 — «\u0413\u043e\u0431\u043b\u0438\u043d» … № 3'), '\u0413\u043e\u0442\u043e\u0432\u043e \n\u0434\u0430\u043b\u044c\u0448\u0435 — «\u0413\u043e\u0431\u043b\u0438\u043d» … № 3');
+  });
+});
+
+describe('text in the client font', () => {
+  it('keeps Korean and Chinese where the chat uses the client font', () => {
+    assert.equal(fitFont('去十字路口 [[map:1]]', 'zhCN'), '去十字路口 [[map:1]]');
+    assert.equal(fitFont('去十字路口 [[map:1]]', 'zhTW'), '去十字路口 [[map:1]]');
+    assert.equal(fitFont('크로스로드 [[map:1]]', 'koKR'), '크로스로드 [[map:1]]');
+    assert.equal(fitFont('去十字路口 [[map:1]]'), ' [[map:1]]', 'the addon font of other clients has no Chinese');
+    assert.equal(fitFont('크로스로드', 'zhCN'), '', 'Chinese clients have no Hangul');
+  });
+});
+
+describe('plain chat text', () => {
+  it('replaces Markdown links with their text and drops web addresses', () => {
+    const text = 'Диапазоны — [Eternadex](https://eternadex.com/ru/leveling/) и [MMOBoom](https://mmoboom.ru/guides/wow-forever/52255-prokachka/).';
+    assert.deepEqual(plainText(text), { text: 'Диапазоны — Eternadex и MMOBoom.', removed: ['link'] });
+    assert.deepEqual(plainText('Ranges: Eternadex (https://eternadex.com/ru/leveling/), see www.mmoboom.ru/guides for more.'),
+      { text: 'Ranges: Eternadex, see for more.', removed: ['url'] });
+    assert.deepEqual(plainText('Guide: <https://eternadex.com/ru/leveling/>'), { text: 'Guide:', removed: ['url'] });
+  });
+
+  it('removes headings, bold, code and star bullets', () => {
+    assert.deepEqual(plainText('## Route\n**Barrens** first, __then__ Ashenvale\n* quests at `Crossroads`\n+ more\n```\nx\n```'),
+      { text: 'Route\nBarrens first, then Ashenvale\n- quests at Crossroads\n- more\nx\n', removed: ['code', 'heading', 'bold', 'bullet'] });
+  });
+
+  it('leaves text markers and plain text unchanged', () => {
+    const text = `Buy [[item:${'a'.repeat(32)}]] at [[map:1]] and [[map:2]]\n- then 2*3 = 6 #1`;
+    assert.deepEqual(plainText(text), { text, removed: [] });
   });
 });

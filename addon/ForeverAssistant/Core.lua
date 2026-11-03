@@ -28,6 +28,13 @@ function Core.now()
   return GetTime()
 end
 
+-- Client language as GetLocale reports it (enUS, ruRU, zhCN...); enUS when unknown.
+function Core.locale()
+  local locale = Core.try(GetLocale)
+  if type(locale) == "string" and string.match(locale, "^%l%l%u%u$") then return locale end
+  return "enUS"
+end
+
 -- Snapshot/observation time: floor(GetTime()*1000) within the original game session.
 function Core.sessionMs()
   return math.floor(GetTime() * 1000)

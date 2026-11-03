@@ -58,10 +58,47 @@ local function unit(value)
   return type(value) == "number" and value >= 0 and value <= 1
 end
 
--- The model supplies the point label. Non-ASCII labels may appear as boxes in
--- the English client's default font, so omit such labels.
+-- Labels also appear in tooltips drawn with the client's own font: Latin-1 and common
+-- punctuation everywhere, plus the script of the client's language.
+local LATIN = { { 0x20, 0x7E }, { 0xA0, 0x17F }, { 0x2013, 0x2014 }, { 0x2018, 0x201E }, { 0x2026, 0x2026 } }
+local CJK = { { 0x3000, 0x30FF }, { 0x3400, 0x4DBF }, { 0x4E00, 0x9FFF }, { 0xF900, 0xFAFF }, { 0xFF00, 0xFFEF } }
+local HANGUL = { { 0x1100, 0x11FF }, { 0x3130, 0x318F }, { 0xAC00, 0xD7A3 } }
+local CLIENT_SCRIPTS = {
+  ruRU = { { { 0x400, 0x4FF } } },
+  koKR = { HANGUL, CJK },
+  zhCN = { CJK },
+  zhTW = { CJK },
+}
+local LEAD_BITS = { [2] = 32, [3] = 16, [4] = 8 }
+
+local function covered(code, ranges)
+  for _, range in ipairs(ranges) do
+    if code >= range[1] and code <= range[2] then return true end
+  end
+  return false
+end
+
+-- True if the client's font of this locale draws every UTF-8 character of text.
+function Map.clientFontDraws(text)
+  local scripts, length = CLIENT_SCRIPTS[Core.locale()] or {}, 0
+  for char in string.gmatch(text, "[\1-\127\194-\244][\128-\191]*") do
+    length = length + #char
+    local code = string.byte(char, 1)
+    if #char > 1 then
+      if not LEAD_BITS[#char] then return false end
+      code = code % LEAD_BITS[#char]
+      for i = 2, #char do code = code * 64 + string.byte(char, i) % 64 end
+    end
+    local drawn = covered(code, LATIN)
+    for _, ranges in ipairs(scripts) do drawn = drawn or covered(code, ranges) end
+    if not drawn then return false end
+  end
+  return length == #text
+end
+
+-- The model supplies the point label; omit one the client's font cannot draw.
 local function titleOf(value)
-  if type(value) == "string" and value ~= "" and not string.find(value, "[\128-\255]") then return value end
+  if type(value) == "string" and value ~= "" and Map.clientFontDraws(value) then return value end
   return nil
 end
 

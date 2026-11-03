@@ -5,8 +5,10 @@ import { resourcePath } from '../bridge/src/paths.js';
 import { QueryBody } from '../bridge/src/contracts.js';
 import { LuaHost } from './lua-host.js';
 
-function addon(ui = false): LuaHost {
+// before runs ahead of the addon files, for client values read at load such as the locale.
+function addon(ui = false, before = ''): LuaHost {
   const lua = new LuaHost();
+  if (before) lua.run(before);
   lua.loadAddon();
   if (ui) {
     for (const file of ['Theme.lua', 'Settings.lua', 'Chat.lua', 'PlanWindow.lua']) {
@@ -822,5 +824,61 @@ describe('chat window and shortcut settings', () => {
       panel.capture.scripts.OnClick()
       UI.frame:Hide()
       assert(not catcher:IsShown() and not panel.capturing)`);
+  });
+});
+
+describe('client languages', () => {
+  // One answer with a plan in each client language: names differ, IDs and results do not.
+  const NOTO = 'Interface\\AddOns\\ForeverAssistant\\Fonts\\NotoSans-Regular.ttf';
+  const languages = [
+    { locale: 'enUS', zone: 'Elwynn Forest', title: 'Camp', foreign: 'Лагерь', font: NOTO },
+    { locale: 'ruRU', zone: 'Элвиннский лес', title: 'Лагерь лесорубов', foreign: '营地', font: NOTO },
+    { locale: 'deDE', zone: 'Wald von Elwynn', title: 'Holzfällerlager', foreign: 'Лагерь', font: NOTO },
+    { locale: 'zhCN', zone: '艾尔文森林', title: '伐木营地', foreign: '야영지', font: 'Fonts\\ARKai_T.ttf' },
+    { locale: 'koKR', zone: '엘윈 숲', title: '벌목꾼 야영지', foreign: 'Лагерь', font: 'Fonts\\2002.TTF' },
+  ];
+
+  for (const { locale, zone, title, foreign, font } of languages) {
+    it(`${locale}: sends the locale, uses a font with its script, links by ID and ticks the plan`, () => {
+      const lit = LuaHost.literal;
+      const lua = addon(true, `WowStub.locale = ${lit(locale)}; WowStub.zoneText = ${lit(zone)}
+        WowStub.mapNames = { [1429] = ${lit(zone)} }
+        ${font === NOTO ? '' : `STANDARD_TEXT_FONT = ${lit(font)}`}`);
+      assert.equal(lua.eval('__FA_NS.UI.Theme.contentFont'), font);
+      lua.run('TEST_REQUEST = assert(__FA_NS.Assistant.ask("Where to go?"))');
+      const query = JSON.parse(lua.eval('__FA_NS.Outbound.queue[#__FA_NS.Outbound.queue].bytes'));
+      assert.equal(query.body.snapshot.locale, locale);
+      assert.ok(QueryBody.safeParse(query.body).success);
+
+      applyDelivery(lua, 1, `{ deliveryId = "lang-reply", type = "reply", request = TEST_REQUEST, body = {
+        text = "[[item:ab12]] -> [[map:1]]", status = "answer",
+        itemRefs = { { refId = "ab12", itemId = 118, evidenceIds = { "e" } } },
+        locations = { { approxLocation = { title = ${lit(title)}, zoneName = "Elwynn Forest", uiMapId = 1429, x = 41.23, y = 65.01, basis = "b", sourceUrl = "u" } } },
+        plan = { title = "Go", steps = {
+          { kind = "get", text = "[[item]]", character = "Tester", item = { refId = "ab12", itemId = 118, evidenceIds = { "e" } }, quantity = 2 },
+          { kind = "goto", text = "[[map]]", character = "Tester", location = 1 },
+        } } } }`);
+      lua.run(`local Items, Map, Plan, UI = __FA_NS.Items, __FA_NS.Map, __FA_NS.Plan, __FA_NS.UI
+        local entry = __FA_NS.Assistant.state.history[2]
+        assert(Map.clientFontDraws(${lit(title)}) and not Map.clientFontDraws(${lit(foreign)}))
+        local point = assert(Map.pointOf(entry, 1))
+        assert(point.mapId == 1429 and point.zoneName == ${lit(zone)} and point.title == ${lit(title)})
+        local text = Items.renderEntry(entry)
+        assert(string.find(text, "|Hitem:118", 1, true), text)
+        assert(string.find(text, "|Hfamap:" .. entry.entryId .. ":1|h[" .. ${lit(title)} .. "]|h", 1, true), text)
+        Items.onClick("faplan:activate:" .. entry.entryId, "[Make active plan]", "LeftButton")
+        local plan = assert(Plan.active())
+        Plan.refresh()
+        assert(plan.done[1] == true, "two potions are in the bags")
+        assert(plan.done[2] == true, "the player stands at the point")
+        assert(string.find(UI.planStepText(plan, 2), "|Hfamap:plan:1|h[" .. ${lit(title)} .. "]|h", 1, true))`);
+    });
+  }
+
+  it('labels a point by its zone when the client font cannot draw the title', () => {
+    const lua = addon(false);
+    lua.run(`local point = assert(__FA_NS.Map.pointOf({ approxLocation = { title = ${LuaHost.literal('Лагерь')}, zoneName = "Elwynn Forest", x = 40, y = 60, basis = "b", sourceUrl = "u" } }))
+      assert(point.title == nil and point.zoneName == "Elwynn Forest")
+      assert(string.find(__FA_NS.Items.mapLink("e1", point), "|h[Elwynn Forest]|h", 1, true))`);
   });
 });

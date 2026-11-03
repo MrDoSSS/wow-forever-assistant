@@ -7,7 +7,19 @@ UI.Theme = Theme
 Theme.gold = { 0.86, 0.69, 0.39 }
 Theme.muted = { 0.59, 0.59, 0.55 }
 -- Use a custom font because enUS GameFontHighlight does not guarantee Cyrillic glyphs.
-Theme.contentFont = "Interface\\AddOns\\ForeverAssistant\\Fonts\\NotoSans-Regular.ttf"
+-- It has no Korean or Chinese, so those clients keep their own font, which has their
+-- script; the bridge fits reply text to the same choice (bridge/src/domain/glyphs.ts).
+Theme.addonFont = "Interface\\AddOns\\ForeverAssistant\\Fonts\\NotoSans-Regular.ttf"
+Theme.CLIENT_FONT_LOCALES = { koKR = true, zhCN = true, zhTW = true }
+
+function Theme.fontFor(locale)
+  if not Theme.CLIENT_FONT_LOCALES[locale] then return Theme.addonFont end
+  if type(STANDARD_TEXT_FONT) == "string" and STANDARD_TEXT_FONT ~= "" then return STANDARD_TEXT_FONT end
+  local path = GameFontHighlight and FA.Core.try(GameFontHighlight.GetFont, GameFontHighlight)
+  return type(path) == "string" and path or Theme.addonFont
+end
+
+Theme.contentFont = Theme.fontFor(FA.Core.locale())
 Theme.defaults = { scale = 1, fontSize = 14, opacity = 0.96, locked = false, width = 860, height = 660 }
 
 function Theme.setContentFont(region, size)

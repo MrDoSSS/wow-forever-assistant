@@ -280,7 +280,7 @@ end
 -- Client functions used by collectors and transport, exposed through /fa api when
 -- /run is disabled. true means the function exists.
 Context.API_NAMES = {
-  "UnitGUID", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel", "GetMoney",
+  "GetLocale", "UnitGUID", "GetRealmName", "UnitClass", "UnitRace", "UnitLevel", "GetMoney",
   "GetInventoryItemID", "GetInventoryItemLink",
   "C_QuestLog.GetNumQuestLogEntries", "C_QuestLog.GetInfo", "C_QuestLog.GetQuestObjectives", "GetQuestLogTitle",
   "GetNumTalentTabs", "GetTalentTabInfo", "GetNumTalents", "GetTalentInfo",
@@ -349,5 +349,5 @@ function Context.collect(policy, snapshotId, items)
   for _, name in ipairs(Context.GROUPS) do
     groups[name] = Context.group(name, enabled[name], items)
   end
-  return { snapshotId = snapshotId, capturedAtSessionMs = FA.Core.sessionMs(), groups = groups }
+  return { snapshotId = snapshotId, capturedAtSessionMs = FA.Core.sessionMs(), locale = FA.Core.locale(), groups = groups }
 end

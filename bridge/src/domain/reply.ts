@@ -18,8 +18,10 @@ import type { Store, VerifiedRefRow } from '../storage/store.js';
 import { zoneIdOf } from '../sources/zones.js';
 import { PROFESSION_SKILL_IDS } from './alts.js';
 import { fitFont } from './glyphs.js';
+import { plainText } from './plaintext.js';
 
-export type ReplyCheck = { ok: true; reply: GameReply } | { ok: false; reason: string };
+/** markdown lists the kinds of Markdown removed from the model's text. */
+export type ReplyCheck = { ok: true; reply: GameReply; markdown: string[] } | { ok: false; reason: string };
 
 /** An approximate point with the uiMapID of its English zone, for clients in other languages. */
 const withMapId = <T extends { zoneName: string }>(point: T | null) => (point === null ? null : { ...point, uiMapId: zoneIdOf(point.zoneName) });
@@ -79,10 +81,15 @@ export function describeIssues(error: z.ZodError): string {
     .join('; ');
 }
 
-// Player-visible text must fit the addon's font (domain/glyphs.ts).
-// Keep zone and character names unchanged: map lookup and mail addressing depend on them.
-function fitReplyText(reply: ModelReply): ModelReply {
-  const fit = (text: string) => fitFont(text) || '-';
+// Player-visible text is plain (domain/plaintext.ts) and fits the chat font of the client's
+// locale (domain/glyphs.ts). Keep zone and character names unchanged: map lookup and mail
+// addressing depend on them.
+function fitReplyText(reply: ModelReply, locale: string, markdown: Set<string>): ModelReply {
+  const fit = (text: string) => {
+    const plain = plainText(text);
+    for (const kind of plain.removed) markdown.add(kind);
+    return fitFont(plain.text, locale) || '-';
+  };
   const approx = <T extends { title: string; basis: string } | null>(point: T): T =>
     point === null ? point : { ...point, title: fit(point.title), basis: fit(point.basis) };
   return {
@@ -98,10 +105,12 @@ function fitReplyText(reply: ModelReply): ModelReply {
   };
 }
 
-export function verifyModelReply(output: unknown, store: Store, attemptIds: readonly string[]): ReplyCheck {
+/** locale is the client's (snapshot.locale); it selects the chat font the text must fit. */
+export function verifyModelReply(output: unknown, store: Store, attemptIds: readonly string[], locale = 'enUS'): ReplyCheck {
   const parsed = ModelReply.safeParse(output);
   if (!parsed.success) return { ok: false, reason: `schema: ${describeIssues(parsed.error)}` };
-  const reply = fitReplyText(parsed.data);
+  const markdown = new Set<string>();
+  const reply = fitReplyText(parsed.data, locale, markdown);
 
   const ownRef = (refId: string, kind: VerifiedRefRow['kind']): VerifiedRefRow | string => {
     const row = store.getVerifiedRef(refId);
@@ -222,7 +231,7 @@ export function verifyModelReply(output: unknown, store: Store, attemptIds: read
     ...(plan ? { plan } : {}),
   });
   if (!game.success) return { ok: false, reason: `game reply: ${describeIssues(game.error)}` };
-  return { ok: true, reply: game.data };
+  return { ok: true, reply: game.data, markdown: [...markdown] };
 }
 
 /**

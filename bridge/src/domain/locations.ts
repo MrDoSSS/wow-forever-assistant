@@ -1,7 +1,7 @@
 // Map points. A verified location has one of two bases. client_map: the question
-// snapshot reports that its current uiMapID has a zone name (GetBestMapForUnit +
-// GetZoneText); if that name matches our table for the same uiMapID, the client
-// confirms the reference coordinate system for that map. seen_in_forever: ForeverDB
+// snapshot reports the player's current uiMapID (GetBestMapForUnit) and our zone table
+// has that zone, so the client confirms the reference coordinate system for that map.
+// The check uses IDs only: zone names differ by client language. seen_in_forever: ForeverDB
 // players recorded the place in Forever, with map IDs from the Forever client's own
 // tables. Other places remain unverified (ApproxLocation).
 import type { Snapshot, VerifiedLocation } from '../contracts.js';
@@ -18,16 +18,12 @@ export function uiMapIdOf(mapKey: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-const normalize = (name: string) => name.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
-
 /** uiMapID confirmed by the client in this snapshot, or null. */
 export function confirmedMapOf(snapshot: Snapshot): number | null {
   const position = snapshot.groups.position;
   if (position.availability !== 'available' || position.value.mapKey === null) return null;
   const uiMapId = uiMapIdOf(position.value.mapKey);
-  if (uiMapId === null) return null;
-  const expected = zoneNameOf(uiMapId);
-  return expected !== null && normalize(expected) === normalize(position.value.zoneName) ? uiMapId : null;
+  return uiMapId !== null && zoneNameOf(uiMapId) !== null ? uiMapId : null;
 }
 
 export interface LocatedEntity {

@@ -75,7 +75,7 @@ export function snapshotFor(snapshotId: number, p: Policy): Snapshot {
   const groups = Object.fromEntries(
     GROUP_NAMES.map((name) => [name, p.enabledGroups.includes(name) ? available(values[name]) : disabled]),
   );
-  return { snapshotId, capturedAtSessionMs: at, groups } as Snapshot;
+  return { snapshotId, capturedAtSessionMs: at, locale: 'enUS', groups } as Snapshot;
 }
 
 export function encodeMessage(

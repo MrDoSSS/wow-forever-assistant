@@ -494,6 +494,38 @@ describe('tool channel', { skip: !windows }, () => {
     assert.ok(!foreign.ok && foreign.reason.includes('another request'));
   });
 
+  it('confirms the map, keeps links and cleans Markdown the same way in every client language', async () => {
+    const languages = [
+      { locale: 'enUS', zone: 'Stormwind City', text: 'Train at' },
+      { locale: 'ruRU', zone: 'Штормград', text: 'Учись у' },
+      { locale: 'deDE', zone: 'Sturmwind', text: 'Lerne bei' },
+      { locale: 'zhCN', zone: '暴风城', text: '去找' },
+      { locale: 'koKR', zone: '스톰윈드', text: '찾아가세요' },
+    ];
+    for (const { locale, zone, text } of languages) {
+      const { call, input } = await attemptWithChannel(env, (query) => {
+        query.snapshot.locale = locale;
+        const position = query.snapshot.groups.position;
+        if (position.availability === 'available') position.value = { mapKey: 'uiMap:1453', x: 0.5, y: 0.5, zoneName: zone };
+      });
+      const result = await call('find_services', { service: 'trainer', itemId: null, zoneName: null, cursor: null, profession: 'Enchanting', classToken: null, forCharacter: null });
+      const lucan = (result.data.services as { id: number; locationRefId: string | null }[]).find((t) => t.id === 1317)!;
+      assert.ok(lucan.locationRefId, `${locale}: the client confirms its map`);
+      const check = verifyModelReply(
+        { status: 'answer', text: `${text} [[map:1]], **[Eternadex](https://eternadex.com/ru/leveling/)**.`, itemRefIds: [], evidenceIds: result.evidenceIds,
+          locationRefId: null, approxLocation: null, calculationIds: [], limitations: [], clarification: null,
+          locations: [{ locationRefId: lucan.locationRefId, approxLocation: null }] },
+        env.store,
+        [input.attemptId],
+        input.query.snapshot.locale,
+      );
+      assert.ok(check.ok, check.ok ? '' : check.reason);
+      assert.equal(check.reply.text, `${text} [[map:1]], Eternadex.`, locale);
+      assert.deepEqual(check.markdown.sort(), ['bold', 'link']);
+      assert.equal(check.reply.locations?.[0]?.locationRef?.basis, 'client_map', locale);
+    }
+  });
+
   it('closes the connection on a wrong token, oversized frame or another attempt without effect', async () => {
     const { call, input, channel } = await attemptWithChannel(env);
     const before = env.store.countToolCalls(input.attemptId);

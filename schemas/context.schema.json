@@ -950,6 +950,11 @@
         "capturedAtSessionMs": {
           "$ref": "#/$defs/N"
         },
+        "locale": {
+          "default": "enUS",
+          "type": "string",
+          "pattern": "^[a-z]{2}[A-Z]{2}$"
+        },
         "groups": {
           "$ref": "#/$defs/SnapshotGroups"
         }

@@ -368,9 +368,12 @@ export const SnapshotGroups = named(
 );
 export type SnapshotGroups = z.output<typeof SnapshotGroups>;
 
+// Client language (GetLocale); snapshots from addons that do not send it count as enUS.
+export const ClientLocale = z.string().regex(/^[a-z]{2}[A-Z]{2}$/);
+
 export const Snapshot = named(
   'Snapshot',
-  z.object({ snapshotId: U32, capturedAtSessionMs: N, groups: SnapshotGroups }),
+  z.object({ snapshotId: U32, capturedAtSessionMs: N, locale: ClientLocale.default('enUS'), groups: SnapshotGroups }),
 );
 export type Snapshot = z.output<typeof Snapshot>;
 
