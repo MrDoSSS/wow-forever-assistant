@@ -9,3 +9,6 @@ run/
 *.tmp
 
 .DS_Store
+bridge/voice/voice-transport.txt
+bridge/voice/voice-runtime.log
+bridge/voice/*.dll

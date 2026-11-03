@@ -143,18 +143,27 @@ local function pick()
   return Outbound.queue[Outbound.cursor]
 end
 
-function Outbound.tick(now)
+-- Select bytes independently of rendering so the silent channel reuses retries
+-- and ACK handling without creating the field or its textures.
+function Outbound.nextFrame(now)
   if Outbound.suspended or #Outbound.queue == 0 then
-    Outbound.hide()
-    return
+    return nil
   end
-  if Outbound.shownAt and now - Outbound.shownAt < Outbound.FRAME_SECONDS then return end
+  if Outbound.shownAt and now - Outbound.shownAt < Outbound.FRAME_SECONDS then return nil end
   local item = pick()
   local index = item.next
   item.next = (item.next + 1) % item.fragments
+  Outbound.lastShown = { origin = item.origin, sequence = item.sequence, index = index }
+  Outbound.shownAt = now
+  return item, index
+end
+
+function Outbound.tick(now)
+  if FA.Voice and FA.Voice.enabled() then Outbound.hide(); return end
+  if Outbound.suspended or #Outbound.queue == 0 then Outbound.hide(); return end
+  local item, index = Outbound.nextFrame(now)
+  if not item then return end
   local cells = cellsFor(item, index)
   Outbound.lastCells = cells
-  Outbound.lastShown = { origin = item.origin, sequence = item.sequence, index = index }
   render(cells)
-  Outbound.shownAt = now
 end

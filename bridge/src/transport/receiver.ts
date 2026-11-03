@@ -37,7 +37,12 @@ export class FrameReceiver {
       if (pixels.reason !== 'no_frame') this.reject(pixels.reason);
       return null;
     }
-    const frame = parseFrame(pixels.frame);
+    return this.onFrame(pixels.frame);
+  }
+
+  /** The silent voice carries exactly the same checked frame bytes as capture. */
+  onFrame(bytes: Uint8Array): RouteResult | null {
+    const frame = parseFrame(bytes);
     if (!frame.ok) {
       this.reject(frame.reason);
       return null;

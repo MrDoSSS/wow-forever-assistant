@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 export const BridgeConfig = z.strictObject({
+  transport: z.enum(['pixels', 'silent_voice']),
+  voicePort: z.int().min(1024).max(65535),
   /** Server namespace for characterKey, passed to the addon by the installer. */
   serverNamespace: z.string().min(1).nullable(),
   /** The game client's Interface\AddOns directory. */
@@ -44,6 +46,8 @@ export const BridgeConfig = z.strictObject({
 export type BridgeConfig = z.output<typeof BridgeConfig>;
 
 export const DEFAULT_CONFIG: BridgeConfig = {
+  transport: 'pixels',
+  voicePort: 19745,
   serverNamespace: null,
   addonsPath: null,
   // Comma-separated client process names: Wow.exe is the local Forever client (observed

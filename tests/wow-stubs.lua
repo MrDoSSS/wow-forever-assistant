@@ -28,6 +28,7 @@ local function object(kind, name, parent)
   function methods.IsShown(self) return self.shown end
   function methods.IsVisible(self) return self.shown and (not self.parent or self.parent:IsVisible()) end
   function methods.SetScript(self, event, fn) self.scripts[event] = fn end
+  function methods.GetScript(self, event) return self.scripts[event] end
   function methods.CreateTexture(self)
     local texture = object("Texture")
     table.insert(self.children, texture)

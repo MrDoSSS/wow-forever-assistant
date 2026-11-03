@@ -32,7 +32,14 @@ async function staticChecks(): Promise<{ codexPath: string | null }> {
   const config = loadConfig(paths.config);
   line(true, 'Data directory', paths.dataDir);
   line(existsSync(resourcePath('schemas', 'model-reply.schema.json')), 'Model reply schema');
-  if (config.addonsPath) {
+  line(null, 'Transport', config.transport);
+  if (config.transport === 'silent_voice') {
+    line(process.platform === 'win32', 'SAPI platform', 'Windows is required');
+    const voice = resourcePath('bridge', 'voice', 'ForeverAssistant.SilentVoice3.dll');
+    line(existsSync(voice), 'SAPI voice library', voice);
+    line(null, 'SAPI registration', 'Run bridge/voice/Test-Voice.ps1 with Windows PowerShell to verify the registered voice');
+    line(null, 'Voice endpoint', `127.0.0.1:${config.voicePort}; LoD delivery slots are unused`);
+  } else if (config.addonsPath) {
     const check = new SlotPool(config.addonsPath).check();
     line(check.ok, 'LoD pool', check.ok ? config.addonsPath : `missing: ${check.missing.length}, foreign: ${check.foreign.length}`);
   } else line(false, 'LoD pool', 'addonsPath is not configured (bun run install:addon)');

@@ -16,6 +16,7 @@ export const ADDON_FILES = [
   'Transport/Codec.lua',
   'Transport/Outbound.lua',
   'Transport/Inbound.lua',
+  'Transport/Voice.lua',
   'Collectors/Context.lua',
   'Collectors/Alts.lua',
   'Integrations/Auctionator.lua',

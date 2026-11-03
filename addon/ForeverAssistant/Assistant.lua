@@ -635,13 +635,15 @@ function Assistant.onSlotFailed(name, reason)
 end
 
 function Assistant.status()
+  local voice = FA.Voice and FA.Voice.enabled()
   return {
+    transport = voice and "silent_voice" or "pixels",
     ready = session.ready,
     characterKey = session.characterKey,
     origin = session.origin,
     queue = #FA.Outbound.queue,
     reads = FA.Inbound.stats.reads,
-    slotsLeft = FA.Inbound.slotsLeft(),
+    slotsLeft = not voice and FA.Inbound.slotsLeft() or nil,
     paused = FA.Inbound.paused,
     active = state and state.active and keyString(state.active.key) or nil,
   }
