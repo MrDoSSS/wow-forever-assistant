@@ -83,8 +83,12 @@ end
 -- Shared tick: display frames for 0.5 seconds and poll slots on their schedule.
 function FA.tick(now)
   now = now or GetTime()
-  FA.Outbound.tick(now)
-  FA.Inbound.tick(now)
+  if FA.Voice and FA.Voice.enabled() then
+    FA.Voice.tick(now)
+  else
+    FA.Outbound.tick(now)
+    FA.Inbound.tick(now)
+  end
 end
 
 if CreateFrame then

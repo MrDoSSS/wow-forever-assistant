@@ -38,6 +38,8 @@ local function addonApi()
 end
 
 function Inbound.slotsLeft()
+  -- A high UI sentinel hides the legacy slot counter in the unlimited channel.
+  if FA.Voice and FA.Voice.enabled() then return 200 end
   local _, isLoaded = addonApi()
   local left = 0
   for i = Inbound.nextSlot, Inbound.slotCount() do
@@ -91,6 +93,7 @@ function Inbound.pause(reason)
 end
 
 function Inbound.tick(now)
+  if FA.Voice and FA.Voice.enabled() then return end
   if not Inbound.running or Inbound.paused then return end
   local elapsed = now - Inbound.startedAt
   if elapsed < Inbound.offset(Inbound.step) then return end

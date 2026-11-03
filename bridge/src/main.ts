@@ -23,6 +23,7 @@ import { Store, StoreError } from './storage/store.js';
 import { PowerShellCapture } from './transport/capture.js';
 import { DeliveryPublisher, SlotPool } from './transport/delivery.js';
 import { FrameReceiver } from './transport/receiver.js';
+import { SilentVoiceTransport } from './transport/voice.js';
 
 async function main(): Promise<number> {
   const paths = dataPaths(defaultDataDir());
@@ -45,7 +46,12 @@ async function main(): Promise<number> {
 
   // Write only to this installation's pool slots (tools/install.ts).
   let publisher: DeliveryPublisher | null = null;
-  if (config.addonsPath) {
+  const voice = config.transport === 'silent_voice'
+    ? new SilentVoiceTransport({ dataDir: paths.dataDir, port: config.voicePort, diag,
+      sharedConfigPath: resourcePath('bridge', 'voice', 'voice-transport.txt') }) : null;
+  if (voice) {
+    publisher = new DeliveryPublisher({ store, pool: voice, clock: systemClock, diag });
+  } else if (config.addonsPath) {
     const pool = new SlotPool(config.addonsPath);
     const check = pool.check();
     if (check.ok) publisher = new DeliveryPublisher({ store, pool, clock: systemClock, diag });
@@ -161,14 +167,16 @@ async function main(): Promise<number> {
   publisher?.publishNow();
 
   const receiver = new FrameReceiver({ receive: (message) => bridge.receive(message), clock: systemClock, diag });
-  const capture = new PowerShellCapture({ processName: config.gameProcessName, diag });
-  capture.start({
+  const capture = voice ? null : new PowerShellCapture({ processName: config.gameProcessName, diag });
+  if (voice) voice.start((frame) => receiver.onFrame(frame));
+  capture?.start({
     frame: (image) => receiver.onImage(image),
     status: (code, detail) => diag.event('capture.status', { code, detail }),
   });
   diag.event('bridge.started', {
     dataDir: paths.dataDir,
     adapter: adapter.name,
+    transport: config.transport,
     interruptedAttempts: report.interruptedAttempts,
     acceptedRequests: report.acceptedRequests,
     pool: publisher !== null,
@@ -184,7 +192,8 @@ async function main(): Promise<number> {
     process.once('SIGTERM', resolve);
   });
   clearInterval(keepAlive);
-  await capture.stop();
+  await capture?.stop();
+  voice?.stop();
   await datasets.stop();
   await questiedb.stop();
   publisher?.stop();
